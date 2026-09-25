@@ -90,6 +90,7 @@ Django не берём: его админка и сессии расходятс
 Контур: PostgreSQL 16, Redis 7, API на порту 8080. Секреты только из окружения.
 
 ```bash
+cd backend
 docker compose up --build
 ```
 
