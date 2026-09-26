@@ -29,11 +29,7 @@ export interface PublicQuestion {
 }
 
 export type QuestionStatus = 'draft' | 'published' | 'cancelled'
-export type EffectiveStatus =
-  | QuestionStatus
-  | 'scheduled'
-  | 'live'
-  | 'closed'
+export type EffectiveStatus = 'draft' | 'cancelled' | 'scheduled' | 'live' | 'closed'
 
 export interface QuestionInput {
   name: string

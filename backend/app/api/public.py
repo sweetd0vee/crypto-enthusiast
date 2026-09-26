@@ -43,6 +43,11 @@ def _set_viewer_cookie(response: Response, viewer_id: str) -> None:
     )
 
 
+def _remember_viewer(response: Response, viewer_id: str, is_new: bool) -> None:
+    if is_new:
+        _set_viewer_cookie(response, viewer_id)
+
+
 @router.get("/questionnaire/{question_id}", response_model=PublicQuestion)
 async def questionnaire(
     question_id: int,
@@ -52,14 +57,8 @@ async def questionnaire(
     vid: Annotated[str | None, Cookie()] = None,
 ) -> PublicQuestion:
     viewer_id, is_new = _viewer_id(vid)
-    result = await get_public_question(
-        database,
-        redis,
-        question_id,
-        viewer_id,
-    )
-    if is_new:
-        _set_viewer_cookie(response, viewer_id)
+    result = await get_public_question(database, redis, question_id, viewer_id)
+    _remember_viewer(response, viewer_id, is_new)
     return result
 
 
@@ -80,6 +79,7 @@ async def vote(
     vid: Annotated[str | None, Cookie()] = None,
 ) -> VoteResponse:
     viewer_id, is_new = _viewer_id(vid)
+    client_ip = request.client.host if request.client is not None else ""
     await accept_vote(
         database,
         redis,
@@ -87,11 +87,10 @@ async def vote(
         question_id=question_id,
         option_key=data.option,
         viewer_id=viewer_id,
-        client_ip=request.client.host if request.client is not None else "",
+        client_ip=client_ip,
         ip_hash_salt=settings.ip_hash_salt,
         counter_shards=settings.counter_shards,
         asynchronous_journal=settings.vote_async,
     )
-    if is_new:
-        _set_viewer_cookie(response, viewer_id)
+    _remember_viewer(response, viewer_id, is_new)
     return VoteResponse(status="accepted", question_id=question_id, option=data.option)

@@ -14,6 +14,7 @@ from app.question.models import (
     OptionInput,
     OptionOutput,
     QuestionCreate,
+    QuestionInput,
     QuestionOutput,
     QuestionStatus,
     QuestionUpdate,
@@ -75,12 +76,43 @@ async def _load_one(
     return _to_output(row, option_rows, datetime.now(UTC))
 
 
+def _not_found() -> AppError:
+    return AppError(404, "not_found", "Вопрос не найден")
+
+
+def _require_loaded(loaded: QuestionOutput | None, action: str) -> QuestionOutput:
+    if loaded is None:
+        raise RuntimeError(f"{action} question could not be loaded")
+    return loaded
+
+
+async def _load_existing(
+    connection: AsyncConnection,
+    question_id: int,
+    *,
+    for_update: bool = False,
+) -> QuestionOutput:
+    loaded = await _load_one(connection, question_id, for_update=for_update)
+    if loaded is None:
+        raise _not_found()
+    return loaded
+
+
+def _columns(data: QuestionInput, *, touch: bool = False) -> dict[str, Any]:
+    values: dict[str, Any] = {
+        "name": data.name,
+        "status": data.status,
+        "show_time": data.show_time,
+        "duration_seconds": data.duration_seconds,
+    }
+    if touch:
+        values["updated_at"] = datetime.now(UTC)
+    return values
+
+
 async def get_question(engine: AsyncEngine, question_id: int) -> QuestionOutput:
     async with engine.connect() as connection:
-        result = await _load_one(connection, question_id)
-    if result is None:
-        raise AppError(404, "not_found", "Вопрос не найден")
-    return result
+        return await _load_existing(connection, question_id)
 
 
 async def list_questions(engine: AsyncEngine) -> list[QuestionOutput]:
@@ -140,21 +172,12 @@ async def create_question(
     async with engine.begin() as connection:
         question_id = (
             await connection.execute(
-                insert(question)
-                .values(
-                    name=data.name,
-                    status=data.status,
-                    show_time=data.show_time,
-                    duration_seconds=data.duration_seconds,
-                )
-                .returning(question.c.id)
+                insert(question).values(**_columns(data)).returning(question.c.id)
             )
         ).scalar_one()
         await _write_options(connection, question_id, data.options)
-        created = await _load_one(connection, question_id)
+        created = _require_loaded(await _load_one(connection, question_id), "created")
 
-    if created is None:
-        raise RuntimeError("created question could not be loaded")
     await cache_question(redis, created)
     return created
 
@@ -192,10 +215,7 @@ async def update_question(
     counter_shards: int,
 ) -> QuestionOutput:
     async with engine.begin() as connection:
-        current = await _load_one(connection, question_id, for_update=True)
-        if current is None:
-            raise AppError(404, "not_found", "Вопрос не найден")
-
+        current = await _load_existing(connection, question_id, for_update=True)
         options_changed = not _same_options(current.options, data.options)
         if options_changed and await _has_votes(
             connection,
@@ -212,23 +232,15 @@ async def update_question(
         await connection.execute(
             update(question)
             .where(question.c.id == question_id)
-            .values(
-                name=data.name,
-                status=data.status,
-                show_time=data.show_time,
-                duration_seconds=data.duration_seconds,
-                updated_at=datetime.now(UTC),
-            )
+            .values(**_columns(data, touch=True))
         )
         if options_changed:
             await connection.execute(
                 delete(question_option).where(question_option.c.question_id == question_id)
             )
             await _write_options(connection, question_id, data.options)
-        updated = await _load_one(connection, question_id)
+        updated = _require_loaded(await _load_one(connection, question_id), "updated")
 
-    if updated is None:
-        raise RuntimeError("updated question could not be loaded")
     await cache_question(redis, updated)
     return updated
 
@@ -240,9 +252,7 @@ async def delete_question(
     counter_shards: int,
 ) -> None:
     async with engine.begin() as connection:
-        current = await _load_one(connection, question_id, for_update=True)
-        if current is None:
-            raise AppError(404, "not_found", "Вопрос не найден")
+        current = await _load_existing(connection, question_id, for_update=True)
         if current.status != "draft" or await _has_votes(
             connection,
             redis,

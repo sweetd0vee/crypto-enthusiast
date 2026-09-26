@@ -1,6 +1,10 @@
+from collections.abc import Iterator
+from contextlib import contextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from redis.exceptions import RedisError
 
 
 class AppError(Exception):
@@ -8,6 +12,17 @@ class AppError(Exception):
         self.status_code = status_code
         self.error = error
         self.message = message
+
+
+@contextmanager
+def unavailable_on_redis_error(message: str) -> Iterator[None]:
+    """Переводит сбой Redis в 503, не пряча уже сформированные AppError."""
+    try:
+        yield
+    except AppError:
+        raise
+    except RedisError as exc:
+        raise AppError(503, "unavailable", message) from exc
 
 
 def install_error_handlers(app: FastAPI) -> None:

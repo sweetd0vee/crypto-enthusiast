@@ -17,6 +17,13 @@ RedisDep = Annotated[Redis, Depends(get_redis)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 VoteJournalDep = Annotated[VoteJournal, Depends(get_journal)]
 
+
+def get_counter_shards(settings: SettingsDep) -> int:
+    return settings.counter_shards
+
+
+CounterShardsDep = Annotated[int, Depends(get_counter_shards)]
+
 _bearer = HTTPBearer(auto_error=False)
 
 

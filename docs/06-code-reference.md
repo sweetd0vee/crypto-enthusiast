@@ -26,6 +26,7 @@ frontend/
     pages/
     components/
     styles/
+    useAdminGuard.ts
     api.ts
     types.ts
     adminQuestions.ts
@@ -84,7 +85,8 @@ PostgreSQL URL нормализуется к asyncpg dialect. `counter_shards` �
 ### `backend/app/api/deps.py`
 
 Aliases `DatabaseDep`, `RedisDep`, `SettingsDep` и `VoteJournalDep` связывают
-обработчики с singleton-ресурсами.
+обработчики с singleton-ресурсами. `CounterShardsDep` отдаёт
+`settings.counter_shards` маршрутам, которым нужно обойти все шарды.
 
 `require_admin()`:
 
@@ -106,11 +108,17 @@ Aliases `DatabaseDep`, `RedisDep`, `SettingsDep` и `VoteJournalDep` связы�
 Сервисный слой не формирует `JSONResponse`: он выбрасывает доменную ошибку,
 которую единообразно переводит API-слой.
 
+`unavailable_on_redis_error()` оборачивает вызов Redis: `RedisError` становится
+`503 unavailable`, уже выброшенный `AppError` проходит дальше.
+
 ### `backend/app/api/public.py`
 
 `_viewer_id(cookie_value)` валидирует UUID из cookie `vid`. Валидное значение
 используется повторно; отсутствующее или испорченное заменяется новым
 `uuid4()`. Функция также сообщает, нужно ли поставить cookie в ответ.
+
+`_remember_viewer()` вызывает `_set_viewer_cookie()` только для нового `vid`.
+Оба публичных обработчика пользуются этой парой.
 
 `_set_viewer_cookie()` создаёт `vid` с параметрами:
 
@@ -148,8 +156,7 @@ Handlers остаются тонкими и делегируют сервиса�
 | `get_results_route` | `GET /questions/{id}/results` | `get_results` |
 | `rebuild_results_route` | `POST /questions/{id}/results/rebuild` | `rebuild_results` |
 
-`counter_shards` передаётся из настроек в операции, которым нужно проверить
-или прочитать все Redis-счётчики.
+`counter_shards` приходит в эти операции через `CounterShardsDep`.
 
 ## Backend: вопросы
 
@@ -200,8 +207,11 @@ TTL у карточки отсутствует: create/update всегда об�
 `_to_output()` преобразует строку и варианты в `QuestionOutput`, вычисляя
 эффективный статус на переданный момент времени.
 
-`get_question()` открывает connection, вызывает `_load_one()` и возвращает
-`404 not_found`, если записи нет.
+`_load_existing()` делает то же и превращает отсутствие строки в
+`404 not_found`. `get_question()`, `update_question()` и `delete_question()`
+используют её. `_columns()` собирает поля вопроса для insert и update.
+`_require_loaded()` проверяет, что строка, только что записанная в той же
+транзакции, читается обратно.
 
 `list_questions()` одним запросом читает вопросы, вторым — связанные
 варианты, группирует их в памяти и создаёт outputs без N+1.
@@ -337,6 +347,9 @@ effective status, total и полный массив вариантов.
 
 `_read_counters()` через pipeline читает `HGETALL` каждого shard, суммирует
 одноимённые поля и сообщает, существовал ли хотя бы один Redis-ключ.
+`_journal_counts()` считает журнал, `_store_snapshot()` заменяет
+`question_result`, `_replace_counters()` переписывает Redis. Сбой Redis на
+чтении и замене счётчиков даёт `503`.
 
 `_response()` соединяет counts с вариантами вопроса. Отсутствующий вариант
 получает ноль; `total` вычисляется как сумма.
@@ -493,10 +506,12 @@ same-origin.
 
 ### `pages/AdminPage.tsx`
 
-`loadQuestions()` получает список и при `401` очищает token и возвращает на
-login.
+`loadQuestions()` получает список. `useAdminGuard()` при `401` очищает token
+и возвращает на login; тем же путём пользуется `ResultsPage`.
 
-Страница хранит фильтры, сортировку и редактируемый вопрос. Она:
+Страница хранит фильтры одним объектом `QuestionFilters`, сортировку и
+редактируемый вопрос. Разметка таблицы и сводки вынесена в `QuestionTable` и
+`QuestionStats`. Страница:
 
 - показывает сводные карточки статусов;
 - фильтрует таблицу;
@@ -511,7 +526,8 @@ login.
 
 ### `pages/ResultsPage.tsx`
 
-`loadResults()` загружает агрегат и обрабатывает `401`. Пока статус `live`,
+`loadResults()` загружает агрегат и обрабатывает `401` через `useAdminGuard()`.
+Пока статус `live`,
 `useEffect` запускает polling раз в две секунды. Полосы вычисляют процент как
 `count / total`; для пустого результата используется ноль.
 
@@ -538,6 +554,16 @@ security boundary: backend всё равно проверяет Bearer token.
 
 Варианты можно добавлять до 10 и удалять до минимальных двух.
 
+### `components/QuestionStats.tsx`
+
+Считает карточки «всего», «в эфире», «запланировано», «завершено» и «черновики»
+по `effective_status`.
+
+### `components/QuestionTable.tsx`
+
+Рисует фильтры, сортировку и строки вопросов. Номер строки берётся из
+`buildQuestionNumbers()`, ссылка результатов — из database id.
+
 ### `components/QuestionTiming.tsx`
 
 Раз в секунду обновляет локальное `Date.now()` только для `scheduled` и
@@ -560,6 +586,8 @@ security boundary: backend всё равно проверяет Bearer token.
 `buildQuestionNumbers()` сортирует настоящие id и строит отображаемые номера
 `1..N`.
 
+`emptyFilters` и `filtersAreActive()` описывают состояние панели.
+`matchesTime()` и `matchesDuration()` разбирают соответствующие фильтры.
 `filterQuestions()` применяет:
 
 - фильтр показанного номера;
@@ -574,7 +602,13 @@ security boundary: backend всё равно проверяет Bearer token.
 - `viewerMessages` локализует публичные коды ошибок;
 - `statusLabels` подписывает effective statuses;
 - `errorMessage()` безопасно извлекает сообщение;
+- `formatDuration()` показывает секунды или целые минуты;
 - `toLocalInput()` переводит ISO datetime в значение `datetime-local`.
+
+### `frontend/src/useAdminGuard.ts`
+
+Возвращает функцию, которая на `401 unauthorized` стирает `adminToken` и
+уводит на `/admin/login`.
 
 ### Стили
 

@@ -13,6 +13,25 @@ export interface QuestionFilters {
   sortDirection: SortDirection
 }
 
+export const emptyFilters: QuestionFilters = {
+  number: '',
+  search: '',
+  status: 'all',
+  time: 'all',
+  duration: 'all',
+  sortDirection: 'asc',
+}
+
+export function filtersAreActive(filters: QuestionFilters): boolean {
+  return (
+    filters.number !== '' ||
+    filters.search !== '' ||
+    filters.status !== 'all' ||
+    filters.time !== 'all' ||
+    filters.duration !== 'all'
+  )
+}
+
 export function buildQuestionNumbers(
   questions: Question[],
 ): Map<number, number> {
@@ -21,6 +40,39 @@ export function buildQuestionNumbers(
       .sort((left, right) => left.id - right.id)
       .map((question, index) => [question.id, index + 1]),
   )
+}
+
+function matchesTime(
+  showDate: Date | null,
+  time: TimeFilter,
+  referenceTime: Date,
+): boolean {
+  switch (time) {
+    case 'all':
+      return true
+    case 'without-date':
+      return showDate === null
+    case 'upcoming':
+      return showDate !== null && showDate.getTime() > referenceTime.getTime()
+    case 'today':
+      return (
+        showDate !== null &&
+        showDate.toDateString() === referenceTime.toDateString()
+      )
+  }
+}
+
+function matchesDuration(seconds: number, duration: DurationFilter): boolean {
+  switch (duration) {
+    case 'all':
+      return true
+    case 'short':
+      return seconds <= 60
+    case 'medium':
+      return seconds > 60 && seconds <= 300
+    case 'long':
+      return seconds > 300
+  }
 }
 
 export function filterQuestions(
@@ -34,53 +86,21 @@ export function filterQuestions(
 
   return questions
     .filter((question) => {
-      const showDate = question.show_time
-        ? new Date(question.show_time)
-        : null
-      const searchable = [
-        question.name,
-        ...question.options.map((option) => option.label),
-      ]
+      const showDate = question.show_time ? new Date(question.show_time) : null
+      const searchable = [question.name, ...question.options.map((option) => option.label)]
         .join(' ')
         .toLocaleLowerCase()
-
-      const matchesNumber =
-        normalizedNumber === '' ||
-        String(questionNumbers.get(question.id)).includes(normalizedNumber)
-      const matchesStatus =
-        filters.status === 'all' ||
-        question.effective_status === filters.status
-      const matchesSearch =
-        normalizedSearch === '' || searchable.includes(normalizedSearch)
-      const matchesTime =
-        filters.time === 'all' ||
-        (filters.time === 'without-date' && showDate === null) ||
-        (filters.time === 'upcoming' &&
-          showDate !== null &&
-          showDate.getTime() > referenceTime.getTime()) ||
-        (filters.time === 'today' &&
-          showDate !== null &&
-          showDate.toDateString() === referenceTime.toDateString())
-      const matchesDuration =
-        filters.duration === 'all' ||
-        (filters.duration === 'short' &&
-          question.duration_seconds <= 60) ||
-        (filters.duration === 'medium' &&
-          question.duration_seconds > 60 &&
-          question.duration_seconds <= 300) ||
-        (filters.duration === 'long' && question.duration_seconds > 300)
+      const shownNumber = String(questionNumbers.get(question.id))
 
       return (
-        matchesNumber &&
-        matchesStatus &&
-        matchesSearch &&
-        matchesTime &&
-        matchesDuration
+        (normalizedNumber === '' || shownNumber.includes(normalizedNumber)) &&
+        (filters.status === 'all' || question.effective_status === filters.status) &&
+        (normalizedSearch === '' || searchable.includes(normalizedSearch)) &&
+        matchesTime(showDate, filters.time, referenceTime) &&
+        matchesDuration(question.duration_seconds, filters.duration)
       )
     })
     .sort((left, right) =>
-      filters.sortDirection === 'asc'
-        ? left.id - right.id
-        : right.id - left.id,
+      filters.sortDirection === 'asc' ? left.id - right.id : right.id - left.id,
     )
 }

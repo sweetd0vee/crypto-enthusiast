@@ -3,16 +3,68 @@
 from datetime import UTC, datetime
 
 from redis.asyncio import Redis
-from redis.exceptions import RedisError
 from sqlalchemy import delete, func, insert, select
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from app.api.errors import AppError
+from app.api.errors import unavailable_on_redis_error
 from app.question.models import QuestionOutput
 from app.question.service import get_question
 from app.result.models import OptionCount, QuestionResult
 from app.store.keys import result_counter_keys
 from app.store.schema import question_result, vote
+
+COUNTERS_UNAVAILABLE = "Счётчики временно недоступны"
+
+
+async def _journal_counts(connection: AsyncConnection, question_id: int) -> dict[str, int]:
+    rows = (
+        await connection.execute(
+            select(vote.c.option_key, func.count().label("count"))
+            .where(vote.c.question_id == question_id)
+            .group_by(vote.c.option_key)
+        )
+    ).all()
+    return {option_key: count for option_key, count in rows}
+
+
+async def _store_snapshot(
+    connection: AsyncConnection,
+    question: QuestionOutput,
+    counts: dict[str, int],
+    rebuilt_at: datetime,
+) -> None:
+    await connection.execute(
+        delete(question_result).where(question_result.c.question_id == question.id)
+    )
+    await connection.execute(
+        insert(question_result),
+        [
+            {
+                "question_id": question.id,
+                "option_key": option.key,
+                "count": counts.get(option.key, 0),
+                "rebuilt_at": rebuilt_at,
+            }
+            for option in question.options
+        ],
+    )
+
+
+async def _replace_counters(
+    redis: Redis,
+    question: QuestionOutput,
+    counts: dict[str, int],
+    counter_shards: int,
+) -> None:
+    keys = result_counter_keys(question.id, counter_shards)
+    with unavailable_on_redis_error(COUNTERS_UNAVAILABLE):
+        pipeline = redis.pipeline(transaction=True)
+        pipeline.delete(*keys)
+        pipeline.hset(
+            keys[0],
+            mapping={option.key: counts.get(option.key, 0) for option in question.options},
+        )
+        await pipeline.execute()
 
 
 async def _read_counters(
@@ -21,13 +73,11 @@ async def _read_counters(
     counter_shards: int,
 ) -> tuple[bool, dict[str, int]]:
     keys = result_counter_keys(question_id, counter_shards)
-    try:
+    with unavailable_on_redis_error(COUNTERS_UNAVAILABLE):
         pipeline = redis.pipeline(transaction=False)
         for key in keys:
             pipeline.hgetall(key)
         shards = await pipeline.execute()
-    except RedisError as exc:
-        raise AppError(503, "unavailable", "Счётчики временно недоступны") from exc
 
     totals: dict[str, int] = {}
     found = False
@@ -65,42 +115,10 @@ async def rebuild_results(
 ) -> QuestionResult:
     question = await get_question(engine, question_id)
     async with engine.begin() as connection:
-        rows = (
-            await connection.execute(
-                select(vote.c.option_key, func.count().label("count"))
-                .where(vote.c.question_id == question_id)
-                .group_by(vote.c.option_key)
-            )
-        ).all()
-        counts = {option_key: count for option_key, count in rows}
+        counts = await _journal_counts(connection, question_id)
+        await _store_snapshot(connection, question, counts, datetime.now(UTC))
 
-        await connection.execute(
-            delete(question_result).where(question_result.c.question_id == question_id)
-        )
-        await connection.execute(
-            insert(question_result),
-            [
-                {
-                    "question_id": question_id,
-                    "option_key": option.key,
-                    "count": counts.get(option.key, 0),
-                    "rebuilt_at": datetime.now(UTC),
-                }
-                for option in question.options
-            ],
-        )
-
-    keys = result_counter_keys(question_id, counter_shards)
-    try:
-        pipeline = redis.pipeline(transaction=True)
-        pipeline.delete(*keys)
-        pipeline.hset(
-            keys[0],
-            mapping={option.key: counts.get(option.key, 0) for option in question.options},
-        )
-        await pipeline.execute()
-    except RedisError as exc:
-        raise AppError(503, "unavailable", "Счётчики временно недоступны") from exc
+    await _replace_counters(redis, question, counts, counter_shards)
     return _response(question, counts)
 
 

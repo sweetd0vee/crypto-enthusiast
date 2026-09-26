@@ -7,18 +7,18 @@ import zlib
 from datetime import UTC, datetime, timedelta
 
 from redis.asyncio import Redis
-from redis.exceptions import RedisError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from app.api.errors import AppError
+from app.api.errors import AppError, unavailable_on_redis_error
 from app.question.cache import cache_question, get_cached_question
-from app.question.models import QuestionOutput
+from app.question.models import OptionInput, QuestionOutput
 from app.question.service import get_question
 from app.store.keys import result_counter_key, vote_dedup_key
 from app.vote.journal import VoteJournal
 from app.vote.models import PublicQuestion, VoteEvent
 
 DEDUP_TTL_MARGIN_SECONDS = 86_400
+VOTE_UNAVAILABLE = "Сервис голосования временно недоступен"
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ async def _load_question(
     redis: Redis,
     question_id: int,
 ) -> QuestionOutput:
-    try:
+    with unavailable_on_redis_error(VOTE_UNAVAILABLE):
         cached = await get_cached_question(redis, question_id)
         if cached is not None:
             return cached
@@ -78,24 +78,37 @@ async def _load_question(
         loaded = await get_question(engine, question_id)
         await cache_question(redis, loaded)
         return loaded
-    except AppError:
-        raise
-    except RedisError as exc:
-        raise AppError(503, "unavailable", "Сервис голосования временно недоступен") from exc
 
 
 def _check_window(question: QuestionOutput, now: datetime) -> datetime:
-    if question.status != "published":
+    show_time = question.show_time
+    if question.status != "published" or show_time is None:
         raise AppError(403, "not_published", "Вопрос не опубликован")
-    if question.show_time is None:
-        raise AppError(403, "not_published", "Вопрос не опубликован")
-    if now < question.show_time:
+    if now < show_time:
         raise AppError(403, "window_not_started", "Голосование ещё не началось")
 
-    closes_at = question.show_time + timedelta(seconds=question.duration_seconds)
+    closes_at = show_time + timedelta(seconds=question.duration_seconds)
     if now >= closes_at:
         raise AppError(410, "window_closed", "Время голосования истекло")
     return closes_at
+
+
+def _public_question(question: QuestionOutput, closes_at: datetime) -> PublicQuestion:
+    return PublicQuestion(
+        id=question.id,
+        name=question.name,
+        closes_at=closes_at,
+        options=[OptionInput(key=option.key, label=option.label) for option in question.options],
+    )
+
+
+def _dedup_ttl(closes_at: datetime, now: datetime) -> int:
+    remaining = math.ceil((closes_at - now).total_seconds())
+    return remaining + DEDUP_TTL_MARGIN_SECONDS
+
+
+def _counter_shard(dedup_key: str, counter_shards: int) -> int:
+    return zlib.crc32(dedup_key.encode()) % counter_shards
 
 
 async def get_public_question(
@@ -110,18 +123,11 @@ async def get_public_question(
     question = await _load_question(engine, redis, question_id)
     closes_at = _check_window(question, current_time)
     dedup_key = vote_dedup_key(question_id, dedup_hash(question_id, viewer_id))
-    try:
+    with unavailable_on_redis_error(VOTE_UNAVAILABLE):
         if await redis.exists(dedup_key):
             raise AppError(409, "already_voted", "Вы уже проголосовали")
-    except RedisError as exc:
-        raise AppError(503, "unavailable", "Сервис голосования временно недоступен") from exc
 
-    return PublicQuestion(
-        id=question.id,
-        name=question.name,
-        closes_at=closes_at,
-        options=[{"key": option.key, "label": option.label} for option in question.options],
-    )
+    return _public_question(question, closes_at)
 
 
 async def accept_vote(
@@ -146,22 +152,17 @@ async def accept_vote(
 
     dedup_key = dedup_hash(question_id, viewer_id)
     redis_dedup_key = vote_dedup_key(question_id, dedup_key)
-    ttl = math.ceil((closes_at - current_time).total_seconds()) + DEDUP_TTL_MARGIN_SECONDS
-    try:
-        shard = zlib.crc32(dedup_key.encode()) % counter_shards
+    with unavailable_on_redis_error(VOTE_UNAVAILABLE):
+        shard = _counter_shard(dedup_key, counter_shards)
         first_vote = await _reserve_and_increment(
             redis,
             dedup_key=redis_dedup_key,
             counter_key=result_counter_key(question_id, shard),
-            ttl=ttl,
+            ttl=_dedup_ttl(closes_at, current_time),
             option_key=option_key,
         )
         if not first_vote:
             raise AppError(409, "already_voted", "Вы уже проголосовали")
-    except AppError:
-        raise
-    except RedisError as exc:
-        raise AppError(503, "unavailable", "Сервис голосования временно недоступен") from exc
 
     event = VoteEvent(
         question_id=question_id,

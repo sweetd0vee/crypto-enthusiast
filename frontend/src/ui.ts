@@ -11,11 +11,15 @@ export const viewerMessages: Partial<Record<ApiErrorCode, string>> = {
 
 export const statusLabels: Record<EffectiveStatus, string> = {
   draft: 'Черновик',
-  published: 'Опубликован',
   cancelled: 'Отменён',
   scheduled: 'Запланирован',
   live: 'В эфире',
   closed: 'Завершён',
+}
+
+export function formatDuration(seconds: number): string {
+  if (seconds >= 60) return `${Math.floor(seconds / 60)} мин.`
+  return `${seconds} сек.`
 }
 
 export function errorMessage(error: unknown, fallback: string): string {

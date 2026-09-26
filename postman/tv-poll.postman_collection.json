@@ -393,7 +393,7 @@
             "description": "Черновик зрителю не виден. id сохраняется в draftId.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Draft\",\n  \"status\": \"draft\",\n  \"duration_seconds\": 60,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Yes\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"No\"\n    }\n  ]\n}",
+              "raw": "{\n  \"name\": \"Нужен ли подогрев руля?\",\n  \"status\": \"draft\",\n  \"duration_seconds\": 60,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Да\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"Нет\"\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -493,7 +493,7 @@
                   "});",
                   "const body = pm.response.json();",
                   "pm.test('draft card', function () {",
-                  "    pm.expect(body.name).to.eql('Draft');",
+                  "    pm.expect(body.name).to.eql('Нужен ли подогрев руля?');",
                   "    pm.expect(body.status).to.eql('draft');",
                   "    pm.expect(body.effective_status).to.eql('draft');",
                   "    pm.expect(body.options).to.have.lengthOf(2);",
@@ -512,7 +512,7 @@
             "description": "",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Edited draft\",\n  \"status\": \"draft\",\n  \"duration_seconds\": 60,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Yes\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"No\"\n    }\n  ]\n}",
+              "raw": "{\n  \"name\": \"Нужен ли подогрев сидений?\",\n  \"status\": \"draft\",\n  \"duration_seconds\": 60,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Да\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"Нет\"\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -543,7 +543,7 @@
                   "});",
                   "const body = pm.response.json();",
                   "pm.test('name updated', function () {",
-                  "    pm.expect(body.name).to.eql('Edited draft');",
+                  "    pm.expect(body.name).to.eql('Нужен ли подогрев сидений?');",
                   "    pm.expect(body.id).to.eql(Number(pm.collectionVariables.get('draftId')));",
                   "});"
                 ]
@@ -667,7 +667,7 @@
             "description": "Два варианта — тот же метод, что и multiple choice. id сохраняется в abQuestionId.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"A or B\",\n  \"status\": \"published\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"a\",\n      \"label\": \"A\"\n    },\n    {\n      \"key\": \"b\",\n      \"label\": \"B\"\n    }\n  ],\n  \"show_time\": \"{{abShowTime}}\"\n}",
+              "raw": "{\n  \"name\": \"Бензин или дизель?\",\n  \"status\": \"published\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"a\",\n      \"label\": \"Бензин\"\n    },\n    {\n      \"key\": \"b\",\n      \"label\": \"Дизель\"\n    }\n  ],\n  \"show_time\": \"{{abShowTime}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -716,7 +716,7 @@
             "description": "Опубликованный вопрос отменяют сменой статуса, а не DELETE.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"A or B\",\n  \"status\": \"cancelled\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"a\",\n      \"label\": \"A\"\n    },\n    {\n      \"key\": \"b\",\n      \"label\": \"B\"\n    }\n  ]\n}",
+              "raw": "{\n  \"name\": \"Бензин или дизель?\",\n  \"status\": \"cancelled\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"a\",\n      \"label\": \"Бензин\"\n    },\n    {\n      \"key\": \"b\",\n      \"label\": \"Дизель\"\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -770,7 +770,7 @@
             "description": "show_time на 30 секунд в прошлом, окно 600 секунд. id сохраняется в liveQuestionId.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"What is 100+8?\",\n  \"status\": \"published\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"a\",\n      \"label\": \"108\"\n    },\n    {\n      \"key\": \"b\",\n      \"label\": \"102\"\n    },\n    {\n      \"key\": \"c\",\n      \"label\": \"303\"\n    },\n    {\n      \"key\": \"d\",\n      \"label\": \"20\"\n    }\n  ],\n  \"show_time\": \"{{liveShowTime}}\"\n}",
+              "raw": "{\n  \"name\": \"Какой привод практичнее?\",\n  \"status\": \"published\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"a\",\n      \"label\": \"Передний\"\n    },\n    {\n      \"key\": \"b\",\n      \"label\": \"Задний\"\n    },\n    {\n      \"key\": \"c\",\n      \"label\": \"Полный\"\n    },\n    {\n      \"key\": \"d\",\n      \"label\": \"Подключаемый\"\n    }\n  ],\n  \"show_time\": \"{{liveShowTime}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -848,7 +848,7 @@
                   "const body = pm.response.json();",
                   "pm.test('public fields only', function () {",
                   "    pm.expect(body).to.have.keys('id', 'name', 'closes_at', 'options');",
-                  "    pm.expect(body.name).to.eql('What is 100+8?');",
+                  "    pm.expect(body.name).to.eql('Какой привод практичнее?');",
                   "    pm.expect(body.options.map(function (item) { return item.key; })).to.eql(['a', 'b', 'c', 'd']);",
                   "});",
                   "const setCookie = pm.response.headers.get('Set-Cookie') || '';",
@@ -1189,7 +1189,7 @@
             "description": "Старт через час. id сохраняется в scheduledQuestionId.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Not started\",\n  \"status\": \"published\",\n  \"duration_seconds\": 60,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Yes\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"No\"\n    }\n  ],\n  \"show_time\": \"{{scheduledShowTime}}\"\n}",
+              "raw": "{\n  \"name\": \"Берёте зимнюю резину заранее?\",\n  \"status\": \"published\",\n  \"duration_seconds\": 60,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Да\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"Нет\"\n    }\n  ],\n  \"show_time\": \"{{scheduledShowTime}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1353,7 +1353,7 @@
             "description": "Окно закончилось около двух минут назад. id сохраняется в closedQuestionId.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Already closed\",\n  \"status\": \"published\",\n  \"duration_seconds\": 60,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Yes\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"No\"\n    }\n  ],\n  \"show_time\": \"{{closedShowTime}}\"\n}",
+              "raw": "{\n  \"name\": \"Пора менять моторное масло?\",\n  \"status\": \"published\",\n  \"duration_seconds\": 60,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Да\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"Нет\"\n    }\n  ],\n  \"show_time\": \"{{closedShowTime}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1570,7 +1570,7 @@
             "description": "id сохраняется в unpublishedId и удаляется следующим запросом.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Hidden draft\",\n  \"status\": \"draft\",\n  \"duration_seconds\": 60,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Yes\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"No\"\n    }\n  ]\n}",
+              "raw": "{\n  \"name\": \"Рассматриваете гибрид?\",\n  \"status\": \"draft\",\n  \"duration_seconds\": 60,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Да\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"Нет\"\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1918,7 +1918,7 @@
             "description": "Набор вариантов после голосов не меняется.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"What is 100+8?\",\n  \"status\": \"published\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"a\",\n      \"label\": \"108\"\n    },\n    {\n      \"key\": \"z\",\n      \"label\": \"Other\"\n    }\n  ],\n  \"show_time\": \"{{liveShowTime}}\"\n}",
+              "raw": "{\n  \"name\": \"Какой привод практичнее?\",\n  \"status\": \"published\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"a\",\n      \"label\": \"Передний\"\n    },\n    {\n      \"key\": \"z\",\n      \"label\": \"Другое\"\n    }\n  ],\n  \"show_time\": \"{{liveShowTime}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1968,7 +1968,7 @@
             "description": "Имя можно поменять, если ключи и подписи вариантов те же.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Renamed live poll\",\n  \"status\": \"published\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"a\",\n      \"label\": \"108\"\n    },\n    {\n      \"key\": \"b\",\n      \"label\": \"102\"\n    },\n    {\n      \"key\": \"c\",\n      \"label\": \"303\"\n    },\n    {\n      \"key\": \"d\",\n      \"label\": \"20\"\n    }\n  ],\n  \"show_time\": \"{{liveShowTime}}\"\n}",
+              "raw": "{\n  \"name\": \"Какой привод выбрать для города?\",\n  \"status\": \"published\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"a\",\n      \"label\": \"Передний\"\n    },\n    {\n      \"key\": \"b\",\n      \"label\": \"Задний\"\n    },\n    {\n      \"key\": \"c\",\n      \"label\": \"Полный\"\n    },\n    {\n      \"key\": \"d\",\n      \"label\": \"Подключаемый\"\n    }\n  ],\n  \"show_time\": \"{{liveShowTime}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1999,7 +1999,7 @@
                   "});",
                   "const body = pm.response.json();",
                   "pm.test('renamed', function () {",
-                  "    pm.expect(body.name).to.eql('Renamed live poll');",
+                  "    pm.expect(body.name).to.eql('Какой привод выбрать для города?');",
                   "    pm.expect(body.options.map(function (item) { return item.key; })).to.eql(['a', 'b', 'c', 'd']);",
                   "});"
                 ]

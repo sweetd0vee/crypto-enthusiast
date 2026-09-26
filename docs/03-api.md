@@ -23,13 +23,13 @@
 ```json
 {
   "id": 1,
-  "name": "What is 100+8?",
+  "name": "Какой привод практичнее?",
   "closes_at": "2026-09-24T18:01:00Z",
   "options": [
-    {"key": "a", "label": "108"},
-    {"key": "b", "label": "102"},
-    {"key": "c", "label": "303"},
-    {"key": "d", "label": "20"}
+    {"key": "a", "label": "Передний"},
+    {"key": "b", "label": "Задний"},
+    {"key": "c", "label": "Полный"},
+    {"key": "d", "label": "Подключаемый"}
   ]
 }
 ```
@@ -76,15 +76,15 @@ curl -sS -c /tmp/vid.txt -b /tmp/vid.txt \
 
 ```json
 {
-  "name": "What is 100+8?",
+  "name": "Какой привод практичнее?",
   "show_time": "2026-09-24T18:00:00Z",
   "duration_seconds": 60,
   "status": "published",
   "options": [
-    {"key": "a", "label": "108"},
-    {"key": "b", "label": "102"},
-    {"key": "c", "label": "303"},
-    {"key": "d", "label": "20"}
+    {"key": "a", "label": "Передний"},
+    {"key": "b", "label": "Задний"},
+    {"key": "c", "label": "Полный"},
+    {"key": "d", "label": "Подключаемый"}
   ]
 }
 ```
@@ -94,16 +94,16 @@ curl -sS -c /tmp/vid.txt -b /tmp/vid.txt \
 ```json
 {
   "id": 1,
-  "name": "What is 100+8?",
+  "name": "Какой привод практичнее?",
   "status": "published",
   "effective_status": "scheduled",
   "show_time": "2026-09-24T18:00:00Z",
   "duration_seconds": 60,
   "options": [
-    {"key": "a", "label": "108", "position": 0},
-    {"key": "b", "label": "102", "position": 1},
-    {"key": "c", "label": "303", "position": 2},
-    {"key": "d", "label": "20", "position": 3}
+    {"key": "a", "label": "Передний", "position": 0},
+    {"key": "b", "label": "Задний", "position": 1},
+    {"key": "c", "label": "Полный", "position": 2},
+    {"key": "d", "label": "Подключаемый", "position": 3}
   ]
 }
 ```
@@ -144,14 +144,14 @@ curl -sS -c /tmp/vid.txt -b /tmp/vid.txt \
 ```json
 {
   "question_id": 1,
-  "name": "What is 100+8?",
+  "name": "Какой привод практичнее?",
   "effective_status": "closed",
   "total": 9001500,
   "counts": [
-    {"key": "a", "label": "108", "count": 600},
-    {"key": "b", "label": "102", "count": 900},
-    {"key": "c", "label": "303", "count": 9000000},
-    {"key": "d", "label": "20", "count": 8100}
+    {"key": "a", "label": "Передний", "count": 600},
+    {"key": "b", "label": "Задний", "count": 900},
+    {"key": "c", "label": "Полный", "count": 9000000},
+    {"key": "d", "label": "Подключаемый", "count": 8100}
   ]
 }
 ```

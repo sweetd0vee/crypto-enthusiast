@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ApiError, api } from '../api'
+import { Link, useParams } from 'react-router-dom'
+import { api } from '../api'
 import { AdminLayout } from '../components/AdminLayout'
 import type { QuestionResult } from '../types'
 import { errorMessage, statusLabels } from '../ui'
+import { useAdminGuard } from '../useAdminGuard'
 
 export function ResultsPage() {
   const { id = '' } = useParams()
-  const navigate = useNavigate()
+  const rejectUnauthorized = useAdminGuard()
   const [result, setResult] = useState<QuestionResult | null>(null)
   const [error, setError] = useState('')
 
@@ -16,17 +17,10 @@ export function ResultsPage() {
       setResult(await api.getResults(id))
       setError('')
     } catch (requestError) {
-      if (
-        requestError instanceof ApiError &&
-        requestError.body.error === 'unauthorized'
-      ) {
-        sessionStorage.removeItem('adminToken')
-        navigate('/admin/login', { replace: true })
-        return
-      }
+      if (rejectUnauthorized(requestError)) return
       setError(errorMessage(requestError, 'Не удалось загрузить результаты'))
     }
-  }, [id, navigate])
+  }, [id, rejectUnauthorized])
 
   useEffect(() => {
     // Loading remote state is the intended synchronization for this page.

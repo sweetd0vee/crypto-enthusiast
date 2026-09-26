@@ -144,15 +144,15 @@ curl -sS -o /tmp/question.json -w '\nHTTP %{http_code}\n' \
   -H 'authorization: Bearer dev-admin-token' \
   -H 'content-type: application/json' \
   -d "{
-    \"name\":\"What is 100+8?\",
+    \"name\":\"Какой привод практичнее?\",
     \"show_time\":\"$SHOW_TIME\",
     \"duration_seconds\":30,
     \"status\":\"published\",
     \"options\":[
-      {\"key\":\"a\",\"label\":\"108\"},
-      {\"key\":\"b\",\"label\":\"102\"},
-      {\"key\":\"c\",\"label\":\"303\"},
-      {\"key\":\"d\",\"label\":\"20\"}
+      {\"key\":\"a\",\"label\":\"Передний\"},
+      {\"key\":\"b\",\"label\":\"Задний\"},
+      {\"key\":\"c\",\"label\":\"Полный\"},
+      {\"key\":\"d\",\"label\":\"Подключаемый\"}
     ]
   }"
 cat /tmp/question.json
@@ -241,12 +241,12 @@ curl -sS -o /tmp/draft.json -w '\nHTTP %{http_code}\n' \
   -X POST http://localhost:8080/questions \
   -H 'authorization: Bearer dev-admin-token' \
   -H 'content-type: application/json' \
-  -d '{"name":"Draft","status":"draft","duration_seconds":60,"options":[{"key":"yes","label":"Yes"},{"key":"no","label":"No"}]}'
+  -d '{"name":"Нужен ли подогрев руля?","status":"draft","duration_seconds":60,"options":[{"key":"yes","label":"Да"},{"key":"no","label":"Нет"}]}'
 DRAFT_ID=$(python3 -c 'import json; print(json.load(open("/tmp/draft.json"))["id"])')
 curl -sS -w '\nHTTP %{http_code}\n' -X PUT \
   -H 'authorization: Bearer dev-admin-token' \
   -H 'content-type: application/json' \
-  -d '{"name":"Edited draft","status":"draft","duration_seconds":60,"options":[{"key":"yes","label":"Yes"},{"key":"no","label":"No"}]}' \
+  -d '{"name":"Нужен ли подогрев сидений?","status":"draft","duration_seconds":60,"options":[{"key":"yes","label":"Да"},{"key":"no","label":"Нет"}]}' \
   "http://localhost:8080/questions/$DRAFT_ID"
 curl -sS -o /dev/null -w 'HTTP %{http_code}\n' -X DELETE \
   -H 'authorization: Bearer dev-admin-token' \

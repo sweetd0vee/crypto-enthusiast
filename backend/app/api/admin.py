@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Response, status
 
-from app.api.deps import DatabaseDep, RedisDep, SettingsDep, require_admin
+from app.api.deps import CounterShardsDep, DatabaseDep, RedisDep, require_admin
 from app.question.models import QuestionCreate, QuestionOutput, QuestionUpdate
 from app.question.service import (
     create_question,
@@ -43,14 +43,9 @@ async def get_results_route(
     question_id: int,
     database: DatabaseDep,
     redis: RedisDep,
-    settings: SettingsDep,
+    counter_shards: CounterShardsDep,
 ) -> QuestionResult:
-    return await get_results(
-        database,
-        redis,
-        question_id,
-        settings.counter_shards,
-    )
+    return await get_results(database, redis, question_id, counter_shards)
 
 
 @router.post("/questions/{question_id}/results/rebuild", response_model=QuestionResult)
@@ -58,14 +53,9 @@ async def rebuild_results_route(
     question_id: int,
     database: DatabaseDep,
     redis: RedisDep,
-    settings: SettingsDep,
+    counter_shards: CounterShardsDep,
 ) -> QuestionResult:
-    return await rebuild_results(
-        database,
-        redis,
-        question_id,
-        settings.counter_shards,
-    )
+    return await rebuild_results(database, redis, question_id, counter_shards)
 
 
 @router.put("/questions/{question_id}", response_model=QuestionOutput)
@@ -74,15 +64,9 @@ async def update_question_route(
     data: QuestionUpdate,
     database: DatabaseDep,
     redis: RedisDep,
-    settings: SettingsDep,
+    counter_shards: CounterShardsDep,
 ) -> QuestionOutput:
-    return await update_question(
-        database,
-        redis,
-        question_id,
-        data,
-        settings.counter_shards,
-    )
+    return await update_question(database, redis, question_id, data, counter_shards)
 
 
 @router.delete(
@@ -93,12 +77,7 @@ async def delete_question_route(
     question_id: int,
     database: DatabaseDep,
     redis: RedisDep,
-    settings: SettingsDep,
+    counter_shards: CounterShardsDep,
 ) -> Response:
-    await delete_question(
-        database,
-        redis,
-        question_id,
-        settings.counter_shards,
-    )
+    await delete_question(database, redis, question_id, counter_shards)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
