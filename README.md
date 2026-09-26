@@ -107,56 +107,170 @@ docker compose up --build
 
 `GET /healthz` отвечает `200`, когда оба хранилища доступны. Миграции применяются до приёма трафика.
 
-Ниже сценарий приёмки. `show_time` для локальной проверки ставят на несколько секунд вперёд или увеличивают `duration_seconds` (в примере — 300, чтобы окно не закрылось, пока идут curl).
+### Десять сценариев приёмки
 
-Создать опубликованный вопрос:
+Команды ниже рассчитаны на чистую базу, но не зависят от того, какой `id` выдал PostgreSQL. Нужны `curl` и `python3`. Каждый вызов печатает HTTP-код.
+
+1. Создать опубликованный вопрос. Старт будет через 10 секунд, окно — 30 секунд:
 
 ```bash
-curl -sS -X POST http://localhost:8080/questions \
-  -H "authorization: Bearer dev-admin-token" \
-  -H "content-type: application/json" \
-  -d '{
-    "name": "What is 100+8?",
-    "show_time": "2026-09-25T18:00:00Z",
-    "duration_seconds": 300,
-    "status": "published",
-    "options": [
-      {"key": "a", "label": "108"},
-      {"key": "b", "label": "102"},
-      {"key": "c", "label": "303"},
-      {"key": "d", "label": "20"}
+SHOW_TIME=$(python3 -c 'from datetime import datetime,timezone,timedelta; print((datetime.now(timezone.utc)+timedelta(seconds=10)).isoformat())')
+curl -sS -o /tmp/question.json -w '\nHTTP %{http_code}\n' \
+  -X POST http://localhost:8080/questions \
+  -H 'authorization: Bearer dev-admin-token' \
+  -H 'content-type: application/json' \
+  -d "{
+    \"name\":\"What is 100+8?\",
+    \"show_time\":\"$SHOW_TIME\",
+    \"duration_seconds\":30,
+    \"status\":\"published\",
+    \"options\":[
+      {\"key\":\"a\",\"label\":\"108\"},
+      {\"key\":\"b\",\"label\":\"102\"},
+      {\"key\":\"c\",\"label\":\"303\"},
+      {\"key\":\"d\",\"label\":\"20\"}
     ]
-  }'
+  }"
+cat /tmp/question.json
+QID=$(python3 -c 'import json; print(json.load(open("/tmp/question.json"))["id"])')
 ```
 
-Открыть форму и проголосовать. Файл cookie — это браузер зрителя:
+Ожидание: `HTTP 201`.
+
+2. Сразу открыть форму до начала:
 
 ```bash
-curl -sS -c /tmp/vid.txt -b /tmp/vid.txt \
-  http://localhost:8080/questionnaire/1
-
-curl -sS -c /tmp/vid.txt -b /tmp/vid.txt \
-  -H "content-type: application/json" \
-  -d '{"option":"a"}' \
-  http://localhost:8080/questionnaire/1/votes
+curl -sS -w '\nHTTP %{http_code}\n' -c /tmp/vid-1 -b /tmp/vid-1 \
+  "http://localhost:8080/questionnaire/$QID"
 ```
 
-Ожидание по пунктам приёмки:
+Ожидание: `HTTP 403`, `error=window_not_started`.
 
-1. До `show_time` форма не отдаётся: `403` и `window_not_started`.
-2. Внутри окна `GET` отдаёт текст и варианты, без служебных полей админки. Если cookie не было, сервер ставит `vid`.
-3. `POST` с вариантом `a` → `201`. Повтор с тем же файлом cookie → `409 already_voted`, счётчик `a` остаётся 1.
-4. Второй файл cookie с того же IP → второй голос принимается.
-5. Ключ не из списка → `422 invalid_option`.
-6. После конца окна `POST` → `410 window_closed`, счётчики не меняются.
-7. Результат: суммы по ключам, `total` равен их сумме, в теле нет IP, cookie и хешей.
+3. Дождаться окна и получить только публичные поля:
 
 ```bash
-curl -sS http://localhost:8080/questions/1/results \
-  -H "authorization: Bearer dev-admin-token"
+sleep 11
+curl -sS -w '\nHTTP %{http_code}\n' -c /tmp/vid-1 -b /tmp/vid-1 \
+  "http://localhost:8080/questionnaire/$QID"
 ```
 
-Черновик удаляется. Вопрос с голосами — нет (`409`). Его снимают с эфира через `PUT` со `"status": "cancelled"`.
+Ожидание: `HTTP 200`; в JSON есть `id`, `name`, `closes_at`, `options`, но нет `status` и внутренних хешей.
+
+4. Проголосовать и повторить запрос с тем же cookie:
+
+```bash
+curl -sS -w '\nHTTP %{http_code}\n' -c /tmp/vid-1 -b /tmp/vid-1 \
+  -H 'content-type: application/json' -d '{"option":"a"}' \
+  "http://localhost:8080/questionnaire/$QID/votes"
+curl -sS -w '\nHTTP %{http_code}\n' -c /tmp/vid-1 -b /tmp/vid-1 \
+  -H 'content-type: application/json' -d '{"option":"a"}' \
+  "http://localhost:8080/questionnaire/$QID/votes"
+```
+
+Ожидание: сначала `201`, затем `409 already_voted`; голос `a` учтён один раз.
+
+5. Второй браузер с того же IP:
+
+```bash
+curl -sS -w '\nHTTP %{http_code}\n' -c /tmp/vid-2 -b /tmp/vid-2 \
+  -H 'content-type: application/json' -d '{"option":"b"}' \
+  "http://localhost:8080/questionnaire/$QID/votes"
+```
+
+Ожидание: `HTTP 201`. IP не является ключом дедупликации.
+
+6. Передать отсутствующий ключ:
+
+```bash
+curl -sS -w '\nHTTP %{http_code}\n' -c /tmp/vid-invalid -b /tmp/vid-invalid \
+  -H 'content-type: application/json' -d '{"option":"missing"}' \
+  "http://localhost:8080/questionnaire/$QID/votes"
+```
+
+Ожидание: `HTTP 422`, `error=invalid_option`.
+
+7. Дождаться закрытия и попробовать проголосовать:
+
+```bash
+sleep 31
+curl -sS -w '\nHTTP %{http_code}\n' -c /tmp/vid-late -b /tmp/vid-late \
+  -H 'content-type: application/json' -d '{"option":"a"}' \
+  "http://localhost:8080/questionnaire/$QID/votes"
+```
+
+Ожидание: `HTTP 410`, `error=window_closed`.
+
+8. Прочитать суммы:
+
+```bash
+curl -sS -w '\nHTTP %{http_code}\n' \
+  -H 'authorization: Bearer dev-admin-token' \
+  "http://localhost:8080/questions/$QID/results"
+```
+
+Ожидание: `a=1`, `b=1`, остальные варианты равны нулю, `total=2`. Если Redis очистить, закрытый вопрос один раз пересчитывается из журнала. Принудительный пересчёт: `POST /questions/$QID/results/rebuild`.
+
+9. Проверить изменение и удаление черновика, затем запрет удаления вопроса с голосами:
+
+```bash
+curl -sS -o /tmp/draft.json -w '\nHTTP %{http_code}\n' \
+  -X POST http://localhost:8080/questions \
+  -H 'authorization: Bearer dev-admin-token' \
+  -H 'content-type: application/json' \
+  -d '{"name":"Draft","status":"draft","duration_seconds":60,"options":[{"key":"yes","label":"Yes"},{"key":"no","label":"No"}]}'
+DRAFT_ID=$(python3 -c 'import json; print(json.load(open("/tmp/draft.json"))["id"])')
+curl -sS -w '\nHTTP %{http_code}\n' -X PUT \
+  -H 'authorization: Bearer dev-admin-token' \
+  -H 'content-type: application/json' \
+  -d '{"name":"Edited draft","status":"draft","duration_seconds":60,"options":[{"key":"yes","label":"Yes"},{"key":"no","label":"No"}]}' \
+  "http://localhost:8080/questions/$DRAFT_ID"
+curl -sS -o /dev/null -w 'HTTP %{http_code}\n' -X DELETE \
+  -H 'authorization: Bearer dev-admin-token' \
+  "http://localhost:8080/questions/$DRAFT_ID"
+curl -sS -w '\nHTTP %{http_code}\n' -X DELETE \
+  -H 'authorization: Bearer dev-admin-token' \
+  "http://localhost:8080/questions/$QID"
+```
+
+Ожидание: `201`, `200`, `204`, затем `409 delete_forbidden`.
+
+10. Машинно проверить отсутствие идентификаторов зрителя в результате:
+
+```bash
+curl -sS -H 'authorization: Bearer dev-admin-token' \
+  "http://localhost:8080/questions/$QID/results" |
+python3 -c 'import json,sys; value=json.load(sys.stdin); text=json.dumps(value); assert all(word not in text for word in ("ip_hash","dedup","cookie","vid")); assert value["total"] == sum(row["count"] for row in value["counts"]); print("OK")'
+```
+
+### Автотесты
+
+```bash
+cd backend
+python3.12 -m venv .venv
+.venv/bin/pip install -e '.[dev]'
+.venv/bin/pytest
+.venv/bin/ruff check .
+```
+
+### Локальный нагрузочный прогон
+
+Включить четыре шарда и пакетную запись журнала, создать живой вопрос и передать его id скрипту:
+
+```bash
+VOTE_ASYNC=true COUNTER_SHARDS=4 docker compose up --build -d --force-recreate api
+.venv/bin/python scripts/load_test.py 1 --requests 2000 --concurrency 100
+```
+
+Контрольный прогон на локальном Docker Desktop: 2000 принятых голосов, 1149,5 RPS, p95 117,2 мс, p99 170,3 мс. После прогона сумма Redis и число строк журнала были равны 2000. Это цифры одного ноутбука, а не обещание 1,7 млн RPS.
+
+### Что не влезает в один процесс
+
+- API не хранит локального состояния и масштабируется несколькими репликами за балансировщиком.
+- Дедуп для 100 млн cookie требует порядка 8–16 ГБ с учётом накладных расходов; в проде нужен Redis Cluster.
+- `COUNTER_SHARDS` разносит запись одного эфира по ключам; чтение результата складывает все шарды.
+- Журнал `vote` разбит на 16 hash-партиций по `question_id`. Для изоляции и быстрого удаления отдельных крупных эфиров следующий шаг — выделенные list-партиции.
+- `VOTE_ASYNC=true` пишет журнал пачками до 1000 строк или раз в 50 мс. Очередь процесса ограничена; промышленный вариант заменяет её внешним брокером и отдельными воркерами.
+- PostgreSQL хранит журнал и снимки пересчёта, но дашборд не выполняет `GROUP BY` на горячем пути.
 
 Фронт в Compose не входит. Когда API уже отвечает, каталог `web/` поднимается отдельно (`npm run dev`), прокси Vite смотрит на `localhost:8080`, чтобы cookie была same-site.
 

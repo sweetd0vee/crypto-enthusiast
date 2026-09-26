@@ -38,8 +38,8 @@ services:
       REDIS_URL: redis://redis:6379/0
       ADMIN_TOKEN: dev-admin-token
       IP_HASH_SALT: dev-salt
-      COUNTER_SHARDS: "1"
-      VOTE_ASYNC: "false"
+      COUNTER_SHARDS: "${COUNTER_SHARDS:-1}"
+      VOTE_ASYNC: "${VOTE_ASYNC:-false}"
     depends_on:
       postgres:
         condition: service_healthy

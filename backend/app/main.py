@@ -13,6 +13,7 @@ from app.store.db import close_engine, init_engine
 from app.store.db import ping as ping_db
 from app.store.redis import close_redis, init_redis
 from app.store.redis import ping as ping_redis
+from app.vote.service import close_journal, init_journal
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,10 +25,12 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
-    init_engine(settings.database_url)
+    engine = init_engine(settings.database_url)
     init_redis(settings.redis_url)
+    init_journal(engine, asynchronous=settings.vote_async)
     logger.info("api started")
     yield
+    await close_journal()
     await close_redis()
     await close_engine()
     logger.info("api stopped")
