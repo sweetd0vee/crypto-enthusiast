@@ -11,15 +11,6 @@ export function SearchIcon({ className }: IconProps) {
   )
 }
 
-export function RefreshIcon({ className }: IconProps) {
-  return (
-    <svg aria-hidden="true" className={className} viewBox="0 0 24 24">
-      <path d="M20 7v5h-5" />
-      <path d="M19 12a7 7 0 1 0-2 5" />
-    </svg>
-  )
-}
-
 export function PencilIcon({ className }: IconProps) {
   return (
     <svg aria-hidden="true" className={className} viewBox="0 0 24 24">
@@ -34,6 +25,15 @@ export function TrashIcon({ className }: IconProps) {
     <svg aria-hidden="true" className={className} viewBox="0 0 24 24">
       <path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7" />
       <path d="M10 11v5m4-5v5" />
+    </svg>
+  )
+}
+
+export function QrIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} viewBox="0 0 24 24">
+      <path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4z" />
+      <path d="M14 14h2v2h-2zm4 0h2v6h-2zm-4 4h2v2h-2z" />
     </svg>
   )
 }

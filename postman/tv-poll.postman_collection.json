@@ -1,0 +1,2150 @@
+{
+  "info": {
+    "_postman_id": "7c4e9a12-6b3d-4f85-9c20-1a8e5d0f6b42",
+    "name": "Минутный ТВ-опрос",
+    "description": "Локальная проверка API минутного ТВ-опроса.\n\nПорядок папок фиксирован: Collection Runner запускает их сверху вниз. Папки 04 и 06 связаны общими голосами, папка 05 читает отменённый вопрос из папки 03.\n\nПеременные `baseUrl` и `adminToken` можно переопределить окружением. id вопросов и cookie `vid` коллекция записывает сама.\n\nАдминские запросы наследуют Bearer. Зрительские запросы идут без токена.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{adminToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "adminToken",
+      "value": "dev-admin-token"
+    },
+    {
+      "key": "draftId",
+      "value": ""
+    },
+    {
+      "key": "abQuestionId",
+      "value": ""
+    },
+    {
+      "key": "abShowTime",
+      "value": ""
+    },
+    {
+      "key": "liveQuestionId",
+      "value": ""
+    },
+    {
+      "key": "liveShowTime",
+      "value": ""
+    },
+    {
+      "key": "scheduledQuestionId",
+      "value": ""
+    },
+    {
+      "key": "scheduledShowTime",
+      "value": ""
+    },
+    {
+      "key": "closedQuestionId",
+      "value": ""
+    },
+    {
+      "key": "closedShowTime",
+      "value": ""
+    },
+    {
+      "key": "unpublishedId",
+      "value": ""
+    },
+    {
+      "key": "viewerA",
+      "value": ""
+    },
+    {
+      "key": "viewerB",
+      "value": ""
+    },
+    {
+      "key": "viewerFresh",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "01 Health",
+      "description": "Проверка готовности API.",
+      "item": [
+        {
+          "name": "GET /healthz",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": "PostgreSQL и Redis доступны.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('status is ok', function () {",
+                  "    pm.expect(body.status).to.eql('ok');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 Admin — auth",
+      "description": "Админские маршруты требуют `Authorization: Bearer {{adminToken}}`.",
+      "item": [
+        {
+          "name": "GET /questions without token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/questions",
+            "description": "Нет заголовка Authorization.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 401', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('error is unauthorized', function () {",
+                  "    pm.expect(body.error).to.eql('unauthorized');",
+                  "});",
+                  "pm.test('message is present', function () {",
+                  "    pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /questions with wrong token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/questions",
+            "description": "Токен не совпадает с ADMIN_TOKEN.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "wrong-token",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 401', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('error is unauthorized', function () {",
+                  "    pm.expect(body.error).to.eql('unauthorized');",
+                  "});",
+                  "pm.test('message is present', function () {",
+                  "    pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 Admin — questions",
+      "description": "Создание, чтение, правка и удаление. Успешные запросы наследуют Bearer из коллекции.",
+      "item": [
+        {
+          "name": "POST /questions empty name",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/questions",
+            "description": "Пустое имя после обрезки пробелов.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"   \",\n  \"status\": \"draft\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Yes\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"No\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 422', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('error is invalid_body', function () {",
+                  "    pm.expect(body.error).to.eql('invalid_body');",
+                  "});",
+                  "pm.test('message is present', function () {",
+                  "    pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /questions one option",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/questions",
+            "description": "Нужно от 2 до 10 вариантов.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Too few\",\n  \"status\": \"draft\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"only\",\n      \"label\": \"Only\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 422', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('error is invalid_body', function () {",
+                  "    pm.expect(body.error).to.eql('invalid_body');",
+                  "});",
+                  "pm.test('message is present', function () {",
+                  "    pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /questions duplicate keys",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/questions",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Duplicate\",\n  \"status\": \"draft\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"a\",\n      \"label\": \"One\"\n    },\n    {\n      \"key\": \"a\",\n      \"label\": \"Two\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 422', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('error is invalid_body', function () {",
+                  "    pm.expect(body.error).to.eql('invalid_body');",
+                  "});",
+                  "pm.test('message is present', function () {",
+                  "    pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /questions published without show_time",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/questions",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"No window\",\n  \"status\": \"published\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Yes\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"No\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 422', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('error is invalid_body', function () {",
+                  "    pm.expect(body.error).to.eql('invalid_body');",
+                  "});",
+                  "pm.test('message is present', function () {",
+                  "    pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /questions duration too short",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/questions",
+            "description": "duration_seconds должен быть от 10 до 3600.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Short\",\n  \"status\": \"draft\",\n  \"duration_seconds\": 9,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Yes\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"No\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 422', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('error is invalid_body', function () {",
+                  "    pm.expect(body.error).to.eql('invalid_body');",
+                  "});",
+                  "pm.test('message is present', function () {",
+                  "    pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /questions create draft",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/questions",
+            "description": "Черновик зрителю не виден. id сохраняется в draftId.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Draft\",\n  \"status\": \"draft\",\n  \"duration_seconds\": 60,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Yes\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"No\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('returns id', function () {",
+                  "    pm.expect(body.id).to.be.a('number');",
+                  "});",
+                  "pm.collectionVariables.set('draftId', String(body.id));",
+                  "pm.test('status matches', function () {",
+                  "    pm.expect(body.status).to.eql('draft');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /questions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/questions",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('draftId');",
+                  "if (!/^\\d+$/.test(id || '')) {",
+                  "    throw new Error('Сначала выполните папку 03: нет draftId');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "const draftId = Number(pm.collectionVariables.get('draftId'));",
+                  "pm.test('list contains the draft', function () {",
+                  "    pm.expect(body.map(function (item) { return item.id; })).to.include(draftId);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /questions/{{draftId}}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/questions/{{draftId}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('draftId');",
+                  "if (!/^\\d+$/.test(id || '')) {",
+                  "    throw new Error('Сначала выполните папку 03: нет draftId');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('draft card', function () {",
+                  "    pm.expect(body.name).to.eql('Draft');",
+                  "    pm.expect(body.status).to.eql('draft');",
+                  "    pm.expect(body.effective_status).to.eql('draft');",
+                  "    pm.expect(body.options).to.have.lengthOf(2);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /questions/{{draftId}}",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": "{{baseUrl}}/questions/{{draftId}}",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Edited draft\",\n  \"status\": \"draft\",\n  \"duration_seconds\": 60,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Yes\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"No\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('draftId');",
+                  "if (!/^\\d+$/.test(id || '')) {",
+                  "    throw new Error('Сначала выполните папку 03: нет draftId');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('name updated', function () {",
+                  "    pm.expect(body.name).to.eql('Edited draft');",
+                  "    pm.expect(body.id).to.eql(Number(pm.collectionVariables.get('draftId')));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /questions/{{draftId}}",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/questions/{{draftId}}",
+            "description": "Черновик без голосов удаляется."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('draftId');",
+                  "if (!/^\\d+$/.test(id || '')) {",
+                  "    throw new Error('Сначала выполните папку 03: нет draftId');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 204', function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});",
+                  "pm.test('empty body', function () {",
+                  "    pm.expect(pm.response.text()).to.eql('');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET deleted draft",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/questions/{{draftId}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('draftId');",
+                  "if (!/^\\d+$/.test(id || '')) {",
+                  "    throw new Error('Сначала выполните папку 03: нет draftId');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('error is not_found', function () {",
+                  "    pm.expect(body.error).to.eql('not_found');",
+                  "});",
+                  "pm.test('message is present', function () {",
+                  "    pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /questions/999999999",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/questions/999999999",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('error is not_found', function () {",
+                  "    pm.expect(body.error).to.eql('not_found');",
+                  "});",
+                  "pm.test('message is present', function () {",
+                  "    pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /questions create A/B",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/questions",
+            "description": "Два варианта — тот же метод, что и multiple choice. id сохраняется в abQuestionId.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"A or B\",\n  \"status\": \"published\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"a\",\n      \"label\": \"A\"\n    },\n    {\n      \"key\": \"b\",\n      \"label\": \"B\"\n    }\n  ],\n  \"show_time\": \"{{abShowTime}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const showTime = new Date(Date.now() + (-30) * 1000).toISOString();",
+                  "pm.collectionVariables.set('abShowTime', showTime);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('returns id', function () {",
+                  "    pm.expect(body.id).to.be.a('number');",
+                  "});",
+                  "pm.collectionVariables.set('abQuestionId', String(body.id));",
+                  "pm.test('status matches', function () {",
+                  "    pm.expect(body.status).to.eql('published');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /questions/{{abQuestionId}} cancel",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": "{{baseUrl}}/questions/{{abQuestionId}}",
+            "description": "Опубликованный вопрос отменяют сменой статуса, а не DELETE.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"A or B\",\n  \"status\": \"cancelled\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"a\",\n      \"label\": \"A\"\n    },\n    {\n      \"key\": \"b\",\n      \"label\": \"B\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('abQuestionId');",
+                  "if (!/^\\d+$/.test(id || '')) {",
+                  "    throw new Error('Сначала выполните папку 03: нет abQuestionId');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('cancelled', function () {",
+                  "    pm.expect(body.status).to.eql('cancelled');",
+                  "    pm.expect(body.effective_status).to.eql('cancelled');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 Viewer — live vote",
+      "description": "Создаёт вопрос, который уже идёт (окно 600 секунд), и проверяет дедуп по cookie vid. Cookie jar отключён: идентификатор зрителя задаёт сама коллекция, чтобы повтор и второй браузер не зависели от сохранённых cookie Postman.",
+      "item": [
+        {
+          "name": "POST /questions create live poll",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/questions",
+            "description": "show_time на 30 секунд в прошлом, окно 600 секунд. id сохраняется в liveQuestionId.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"What is 100+8?\",\n  \"status\": \"published\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"a\",\n      \"label\": \"108\"\n    },\n    {\n      \"key\": \"b\",\n      \"label\": \"102\"\n    },\n    {\n      \"key\": \"c\",\n      \"label\": \"303\"\n    },\n    {\n      \"key\": \"d\",\n      \"label\": \"20\"\n    }\n  ],\n  \"show_time\": \"{{liveShowTime}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const showTime = new Date(Date.now() + (-30) * 1000).toISOString();",
+                  "pm.collectionVariables.set('liveShowTime', showTime);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('returns id', function () {",
+                  "    pm.expect(body.id).to.be.a('number');",
+                  "});",
+                  "pm.collectionVariables.set('liveQuestionId', String(body.id));",
+                  "pm.test('status matches', function () {",
+                  "    pm.expect(body.status).to.eql('published');",
+                  "});",
+                  "pm.test('effective status is live', function () {",
+                  "    pm.expect(body.effective_status).to.eql('live');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /questionnaire/{{liveQuestionId}}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/questionnaire/{{liveQuestionId}}",
+            "description": "Первый заход без cookie. Сервер выставляет vid.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('liveQuestionId');",
+                  "if (!/^\\d+$/.test(id || '')) {",
+                  "    throw new Error('Сначала выполните папку 04: нет liveQuestionId');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('public fields only', function () {",
+                  "    pm.expect(body).to.have.keys('id', 'name', 'closes_at', 'options');",
+                  "    pm.expect(body.name).to.eql('What is 100+8?');",
+                  "    pm.expect(body.options.map(function (item) { return item.key; })).to.eql(['a', 'b', 'c', 'd']);",
+                  "});",
+                  "const setCookie = pm.response.headers.get('Set-Cookie') || '';",
+                  "const match = /vid=([^;]+)/.exec(setCookie);",
+                  "pm.test('sets vid cookie', function () {",
+                  "    pm.expect(match, 'Set-Cookie vid').to.not.equal(null);",
+                  "});",
+                  "if (match) {",
+                  "    pm.collectionVariables.set('viewerA', match[1]);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "POST /votes option a",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "vid={{viewerA}}"
+              }
+            ],
+            "url": "{{baseUrl}}/questionnaire/{{liveQuestionId}}/votes",
+            "description": "Первый голос зрителя A.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"option\": \"a\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('liveQuestionId');",
+                  "if (!/^\\d+$/.test(id || '')) {",
+                  "    throw new Error('Сначала выполните папку 04: нет liveQuestionId');",
+                  "}",
+                  "const cookieValue = pm.collectionVariables.get('viewerA');",
+                  "if (!cookieValue) {",
+                  "    throw new Error('Нет viewerA: предыдущий запрос не сохранил cookie');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('accepted', function () {",
+                  "    pm.expect(body.status).to.eql('accepted');",
+                  "    pm.expect(body.option).to.eql('a');",
+                  "    pm.expect(body.question_id).to.eql(Number(pm.collectionVariables.get('liveQuestionId')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "POST same viewer votes again",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "vid={{viewerA}}"
+              }
+            ],
+            "url": "{{baseUrl}}/questionnaire/{{liveQuestionId}}/votes",
+            "description": "Тот же vid. Второй вариант не должен засчитаться.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"option\": \"b\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('liveQuestionId');",
+                  "if (!/^\\d+$/.test(id || '')) {",
+                  "    throw new Error('Сначала выполните папку 04: нет liveQuestionId');",
+                  "}",
+                  "const cookieValue = pm.collectionVariables.get('viewerA');",
+                  "if (!cookieValue) {",
+                  "    throw new Error('Нет viewerA: предыдущий запрос не сохранил cookie');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 409', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('error is already_voted', function () {",
+                  "    pm.expect(body.error).to.eql('already_voted');",
+                  "});",
+                  "pm.test('message is present', function () {",
+                  "    pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "POST second viewer votes b",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "vid={{viewerB}}"
+              }
+            ],
+            "url": "{{baseUrl}}/questionnaire/{{liveQuestionId}}/votes",
+            "description": "Новый vid с того же клиента. IP не склеивает зрителей.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"option\": \"b\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('liveQuestionId');",
+                  "if (!/^\\d+$/.test(id || '')) {",
+                  "    throw new Error('Сначала выполните папку 04: нет liveQuestionId');",
+                  "}",
+                  "pm.collectionVariables.set('viewerB', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('accepted option b', function () {",
+                  "    pm.expect(body.status).to.eql('accepted');",
+                  "    pm.expect(body.option).to.eql('b');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "POST invalid option",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "vid={{viewerFresh}}"
+              }
+            ],
+            "url": "{{baseUrl}}/questionnaire/{{liveQuestionId}}/votes",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"option\": \"missing\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('liveQuestionId');",
+                  "if (!/^\\d+$/.test(id || '')) {",
+                  "    throw new Error('Сначала выполните папку 04: нет liveQuestionId');",
+                  "}",
+                  "pm.collectionVariables.set('viewerFresh', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 422', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('error is invalid_option', function () {",
+                  "    pm.expect(body.error).to.eql('invalid_option');",
+                  "});",
+                  "pm.test('message is present', function () {",
+                  "    pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "GET form after vote",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "vid={{viewerA}}"
+              }
+            ],
+            "url": "{{baseUrl}}/questionnaire/{{liveQuestionId}}",
+            "description": "Повторное открытие формы тем же vid.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('liveQuestionId');",
+                  "if (!/^\\d+$/.test(id || '')) {",
+                  "    throw new Error('Сначала выполните папку 04: нет liveQuestionId');",
+                  "}",
+                  "const cookieValue = pm.collectionVariables.get('viewerA');",
+                  "if (!cookieValue) {",
+                  "    throw new Error('Нет viewerA: предыдущий запрос не сохранил cookie');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 409', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('error is already_voted', function () {",
+                  "    pm.expect(body.error).to.eql('already_voted');",
+                  "});",
+                  "pm.test('message is present', function () {",
+                  "    pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Viewer — window and publication",
+      "description": "Окно считается по серверному времени. Черновик и отменённый вопрос зрителю недоступны.",
+      "item": [
+        {
+          "name": "POST /questions scheduled",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/questions",
+            "description": "Старт через час. id сохраняется в scheduledQuestionId.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Not started\",\n  \"status\": \"published\",\n  \"duration_seconds\": 60,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Yes\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"No\"\n    }\n  ],\n  \"show_time\": \"{{scheduledShowTime}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const showTime = new Date(Date.now() + (3600) * 1000).toISOString();",
+                  "pm.collectionVariables.set('scheduledShowTime', showTime);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('returns id', function () {",
+                  "    pm.expect(body.id).to.be.a('number');",
+                  "});",
+                  "pm.collectionVariables.set('scheduledQuestionId', String(body.id));",
+                  "pm.test('status matches', function () {",
+                  "    pm.expect(body.status).to.eql('published');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET scheduled form",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "vid={{viewerFresh}}"
+              }
+            ],
+            "url": "{{baseUrl}}/questionnaire/{{scheduledQuestionId}}",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('scheduledQuestionId');",
+                  "if (!/^\\d+$/.test(id || '')) {",
+                  "    throw new Error('Сначала выполните папку 05: нет scheduledQuestionId');",
+                  "}",
+                  "pm.collectionVariables.set('viewerFresh', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 403', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('error is window_not_started', function () {",
+                  "    pm.expect(body.error).to.eql('window_not_started');",
+                  "});",
+                  "pm.test('message is present', function () {",
+                  "    pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "POST scheduled vote",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "vid={{viewerFresh}}"
+              }
+            ],
+            "url": "{{baseUrl}}/questionnaire/{{scheduledQuestionId}}/votes",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"option\": \"yes\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('scheduledQuestionId');",
+                  "if (!/^\\d+$/.test(id || '')) {",
+                  "    throw new Error('Сначала выполните папку 05: нет scheduledQuestionId');",
+                  "}",
+                  "pm.collectionVariables.set('viewerFresh', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 403', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('error is window_not_started', function () {",
+                  "    pm.expect(body.error).to.eql('window_not_started');",
+                  "});",
+                  "pm.test('message is present', function () {",
+                  "    pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "POST /questions closed",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/questions",
+            "description": "Окно закончилось около двух минут назад. id сохраняется в closedQuestionId.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Already closed\",\n  \"status\": \"published\",\n  \"duration_seconds\": 60,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Yes\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"No\"\n    }\n  ],\n  \"show_time\": \"{{closedShowTime}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const showTime = new Date(Date.now() + (-180) * 1000).toISOString();",
+                  "pm.collectionVariables.set('closedShowTime', showTime);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('returns id', function () {",
+                  "    pm.expect(body.id).to.be.a('number');",
+                  "});",
+                  "pm.collectionVariables.set('closedQuestionId', String(body.id));",
+                  "pm.test('status matches', function () {",
+                  "    pm.expect(body.status).to.eql('published');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET closed form",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "vid={{viewerFresh}}"
+              }
+            ],
+            "url": "{{baseUrl}}/questionnaire/{{closedQuestionId}}",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('closedQuestionId');",
+                  "if (!/^\\d+$/.test(id || '')) {",
+                  "    throw new Error('Сначала выполните папку 05: нет closedQuestionId');",
+                  "}",
+                  "pm.collectionVariables.set('viewerFresh', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 410', function () {",
+                  "    pm.response.to.have.status(410);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('error is window_closed', function () {",
+                  "    pm.expect(body.error).to.eql('window_closed');",
+                  "});",
+                  "pm.test('message is present', function () {",
+                  "    pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "POST closed vote",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "vid={{viewerFresh}}"
+              }
+            ],
+            "url": "{{baseUrl}}/questionnaire/{{closedQuestionId}}/votes",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"option\": \"yes\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('closedQuestionId');",
+                  "if (!/^\\d+$/.test(id || '')) {",
+                  "    throw new Error('Сначала выполните папку 05: нет closedQuestionId');",
+                  "}",
+                  "pm.collectionVariables.set('viewerFresh', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 410', function () {",
+                  "    pm.response.to.have.status(410);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('error is window_closed', function () {",
+                  "    pm.expect(body.error).to.eql('window_closed');",
+                  "});",
+                  "pm.test('message is present', function () {",
+                  "    pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "GET cancelled form",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "vid={{viewerFresh}}"
+              }
+            ],
+            "url": "{{baseUrl}}/questionnaire/{{abQuestionId}}",
+            "description": "Вопрос из папки 03 со статусом cancelled.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('abQuestionId');",
+                  "if (!/^\\d+$/.test(id || '')) {",
+                  "    throw new Error('Сначала выполните папку 03: нет abQuestionId');",
+                  "}",
+                  "pm.collectionVariables.set('viewerFresh', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 403', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('error is not_published', function () {",
+                  "    pm.expect(body.error).to.eql('not_published');",
+                  "});",
+                  "pm.test('message is present', function () {",
+                  "    pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "POST /questions unpublished draft",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/questions",
+            "description": "id сохраняется в unpublishedId и удаляется следующим запросом.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Hidden draft\",\n  \"status\": \"draft\",\n  \"duration_seconds\": 60,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Yes\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"No\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('returns id', function () {",
+                  "    pm.expect(body.id).to.be.a('number');",
+                  "});",
+                  "pm.collectionVariables.set('unpublishedId', String(body.id));",
+                  "pm.test('status matches', function () {",
+                  "    pm.expect(body.status).to.eql('draft');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET draft form",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "vid={{viewerFresh}}"
+              }
+            ],
+            "url": "{{baseUrl}}/questionnaire/{{unpublishedId}}",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('unpublishedId');",
+                  "if (!/^\\d+$/.test(id || '')) {",
+                  "    throw new Error('Сначала выполните папку 05: нет unpublishedId');",
+                  "}",
+                  "pm.collectionVariables.set('viewerFresh', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 403', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('error is not_published', function () {",
+                  "    pm.expect(body.error).to.eql('not_published');",
+                  "});",
+                  "pm.test('message is present', function () {",
+                  "    pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "DELETE unpublished draft",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/questions/{{unpublishedId}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('unpublishedId');",
+                  "if (!/^\\d+$/.test(id || '')) {",
+                  "    throw new Error('Сначала выполните папку 05: нет unpublishedId');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 204', function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /questionnaire/999999999",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/questionnaire/999999999",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('error is not_found', function () {",
+                  "    pm.expect(body.error).to.eql('not_found');",
+                  "});",
+                  "pm.test('message is present', function () {",
+                  "    pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "DELETE scheduled question",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/questions/{{scheduledQuestionId}}",
+            "description": "Удалить можно только черновик. Опубликованный вопрос остаётся."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('scheduledQuestionId');",
+                  "if (!/^\\d+$/.test(id || '')) {",
+                  "    throw new Error('Сначала выполните папку 05: нет scheduledQuestionId');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 409', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('error is delete_forbidden', function () {",
+                  "    pm.expect(body.error).to.eql('delete_forbidden');",
+                  "});",
+                  "pm.test('message is present', function () {",
+                  "    pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /questions/{{closedQuestionId}}/results empty",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/questions/{{closedQuestionId}}/results",
+            "description": "Закрытый вопрос без голосов: нули по каждому варианту."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('closedQuestionId');",
+                  "if (!/^\\d+$/.test(id || '')) {",
+                  "    throw new Error('Сначала выполните папку 05: нет closedQuestionId');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('zero totals', function () {",
+                  "    pm.expect(body.total).to.eql(0);",
+                  "    pm.expect(body.effective_status).to.eql('closed');",
+                  "    body.counts.forEach(function (row) {",
+                  "        pm.expect(row.count).to.eql(0);",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06 Admin — results and locks",
+      "description": "Считает голоса папки 04: a=1, b=1, total=2. Пересчёт из журнала совпадает с Redis при VOTE_ASYNC=false (значение по умолчанию).",
+      "item": [
+        {
+          "name": "GET /questions/{{liveQuestionId}}/results",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/questions/{{liveQuestionId}}/results",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('liveQuestionId');",
+                  "if (!/^\\d+$/.test(id || '')) {",
+                  "    throw new Error('Сначала выполните папку 04: нет liveQuestionId');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "const counts = {};",
+                  "body.counts.forEach(function (row) { counts[row.key] = row.count; });",
+                  "pm.test('vote totals', function () {",
+                  "    pm.expect(body.total).to.eql(2);",
+                  "    pm.expect(counts.a).to.eql(1);",
+                  "    pm.expect(counts.b).to.eql(1);",
+                  "    pm.expect(counts.c).to.eql(0);",
+                  "    pm.expect(counts.d).to.eql(0);",
+                  "    pm.expect(body.effective_status).to.eql('live');",
+                  "});",
+                  "pm.test('total matches sum', function () {",
+                  "    const sum = body.counts.reduce(function (acc, row) { return acc + row.count; }, 0);",
+                  "    pm.expect(body.total).to.eql(sum);",
+                  "});",
+                  "const text = JSON.stringify(body);",
+                  "pm.test('no viewer identifiers', function () {",
+                  "    pm.expect(text).to.not.include('ip_hash');",
+                  "    pm.expect(text).to.not.include('dedup');",
+                  "    pm.expect(text).to.not.include('cookie');",
+                  "    pm.expect(text).to.not.include('vid');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /questions/{{liveQuestionId}}/results/rebuild",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/questions/{{liveQuestionId}}/results/rebuild",
+            "description": "Цифры заново собраны из таблицы vote."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('liveQuestionId');",
+                  "if (!/^\\d+$/.test(id || '')) {",
+                  "    throw new Error('Сначала выполните папку 04: нет liveQuestionId');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "const counts = {};",
+                  "body.counts.forEach(function (row) { counts[row.key] = row.count; });",
+                  "pm.test('rebuilt totals', function () {",
+                  "    pm.expect(body.total).to.eql(2);",
+                  "    pm.expect(counts.a).to.eql(1);",
+                  "    pm.expect(counts.b).to.eql(1);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT change options after votes",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": "{{baseUrl}}/questions/{{liveQuestionId}}",
+            "description": "Набор вариантов после голосов не меняется.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"What is 100+8?\",\n  \"status\": \"published\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"a\",\n      \"label\": \"108\"\n    },\n    {\n      \"key\": \"z\",\n      \"label\": \"Other\"\n    }\n  ],\n  \"show_time\": \"{{liveShowTime}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('liveQuestionId');",
+                  "if (!/^\\d+$/.test(id || '')) {",
+                  "    throw new Error('Сначала выполните папку 04: нет liveQuestionId');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 409', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('error is options_locked', function () {",
+                  "    pm.expect(body.error).to.eql('options_locked');",
+                  "});",
+                  "pm.test('message is present', function () {",
+                  "    pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT rename keeping options",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": "{{baseUrl}}/questions/{{liveQuestionId}}",
+            "description": "Имя можно поменять, если ключи и подписи вариантов те же.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Renamed live poll\",\n  \"status\": \"published\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"a\",\n      \"label\": \"108\"\n    },\n    {\n      \"key\": \"b\",\n      \"label\": \"102\"\n    },\n    {\n      \"key\": \"c\",\n      \"label\": \"303\"\n    },\n    {\n      \"key\": \"d\",\n      \"label\": \"20\"\n    }\n  ],\n  \"show_time\": \"{{liveShowTime}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('liveQuestionId');",
+                  "if (!/^\\d+$/.test(id || '')) {",
+                  "    throw new Error('Сначала выполните папку 04: нет liveQuestionId');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('renamed', function () {",
+                  "    pm.expect(body.name).to.eql('Renamed live poll');",
+                  "    pm.expect(body.options.map(function (item) { return item.key; })).to.eql(['a', 'b', 'c', 'd']);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE live question",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/questions/{{liveQuestionId}}",
+            "description": "Вопрос с голосами удалить нельзя."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('liveQuestionId');",
+                  "if (!/^\\d+$/.test(id || '')) {",
+                  "    throw new Error('Сначала выполните папку 04: нет liveQuestionId');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 409', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('error is delete_forbidden', function () {",
+                  "    pm.expect(body.error).to.eql('delete_forbidden');",
+                  "});",
+                  "pm.test('message is present', function () {",
+                  "    pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /questions/999999999",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/questions/999999999",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('error is not_found', function () {",
+                  "    pm.expect(body.error).to.eql('not_found');",
+                  "});",
+                  "pm.test('message is present', function () {",
+                  "    pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /questions/999999999",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": "{{baseUrl}}/questions/999999999",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Missing\",\n  \"status\": \"draft\",\n  \"duration_seconds\": 60,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Yes\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"No\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('error is not_found', function () {",
+                  "    pm.expect(body.error).to.eql('not_found');",
+                  "});",
+                  "pm.test('message is present', function () {",
+                  "    pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /questions/999999999/results",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/questions/999999999/results",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('error is not_found', function () {",
+                  "    pm.expect(body.error).to.eql('not_found');",
+                  "});",
+                  "pm.test('message is present', function () {",
+                  "    pm.expect(body.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

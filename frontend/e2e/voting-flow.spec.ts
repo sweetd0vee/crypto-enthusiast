@@ -66,6 +66,16 @@ test('admin creates polls and two independent viewers vote once', async ({
   const questionId = await createQuestion(page, liveName, 'published')
   if (questionId === null) throw new Error('Published question has no results link')
 
+  await page
+    .getByLabel(`Показать QR-код для «${liveName}»`)
+    .click()
+  const shareDialog = page.getByRole('dialog')
+  await expect(
+    shareDialog.getByRole('heading', { name: liveName }),
+  ).toBeVisible()
+  await expect(shareDialog.locator('svg')).toBeVisible()
+  await shareDialog.getByRole('button', { name: 'Закрыть' }).click()
+
   const viewerOne = await browser.newContext()
   const viewerOnePage = await viewerOne.newPage()
   await viewerOnePage.goto(`/q/${questionId}`)

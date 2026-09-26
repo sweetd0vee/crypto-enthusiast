@@ -116,6 +116,8 @@ npm run dev
 
 Vite откроет `http://localhost:5173` и проксирует API на `localhost:8080`.
 
+Коллекция Postman лежит в [`postman/`](postman/): импортируйте оба JSON-файла и запустите коллекцию целиком. Папки идут по порядку, id вопросов и cookie `vid` проставляются сами.
+
 Переменные сервиса `api`:
 
 | Переменная | Смысл |
@@ -328,6 +330,7 @@ Vite-прокси на `localhost:8080`.
 | [`docs/01-specification.md`](docs/01-specification.md) | Актуальные требования и инварианты |
 | [`docs/02-architecture.md`](docs/02-architecture.md) | Текущая архитектура и логика hot path |
 | [`docs/03-api.md`](docs/03-api.md) | Контракт и коды ошибок |
+| [`postman/`](postman/) | Коллекция Postman для локальной проверки API |
 | [`docs/04-stack.md`](docs/04-stack.md) | Текущий стек, запуск и проверки |
 | [`docs/05-production-roadmap.md`](docs/05-production-roadmap.md) | Только ещё не реализованные production-шаги |
 | [`docs/06-code-reference.md`](docs/06-code-reference.md) | Модули, функции и сквозная логика кода |

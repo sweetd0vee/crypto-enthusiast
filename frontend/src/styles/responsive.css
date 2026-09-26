@@ -1,3 +1,9 @@
+@media (max-width: 1280px) {
+  .stats-grid {
+    grid-template-columns: repeat(3, minmax(150px, 1fr));
+  }
+}
+
 @media (max-width: 1050px) {
   .stats-grid {
     grid-template-columns: repeat(2, minmax(150px, 1fr));
@@ -33,19 +39,24 @@
   }
 
   .page-heading {
-    align-items: stretch;
-    flex-direction: column;
+    align-items: center;
+    flex-direction: row;
+    gap: 12px;
   }
 
   .page-heading h1 {
-    font-size: 34px;
+    font-size: 30px;
   }
 
   .page-heading .primary-button {
-    align-self: start;
+    width: 150px;
+    min-height: 44px;
+    margin-left: auto;
+    flex: 0 0 auto;
   }
 
   .stats-grid {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
     gap: 10px;
   }
 
@@ -68,10 +79,6 @@
     flex: 1;
   }
 
-  .refresh-button {
-    align-self: end;
-  }
-
   table {
     min-width: 980px;
   }
@@ -86,6 +93,33 @@
 
   .option-row input:first-child {
     grid-column: 1 / -1;
+  }
+
+  .share-dialog {
+    padding: 22px;
+  }
+
+  .share-content {
+    grid-template-columns: 1fr;
+  }
+
+  .qr-card {
+    width: min(100%, 260px);
+    justify-self: center;
+  }
+
+  .share-link {
+    grid-template-columns: 1fr;
+  }
+
+  .share-link .primary-button,
+  .share-actions .secondary-button {
+    width: 100%;
+  }
+
+  .share-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
   }
 
   .result-heading {

@@ -9,13 +9,10 @@ import {
 } from '../adminQuestions'
 import { ApiError, api } from '../api'
 import { AdminLayout } from '../components/AdminLayout'
-import {
-  PencilIcon,
-  RefreshIcon,
-  SearchIcon,
-  TrashIcon,
-} from '../components/Icons'
+import { PencilIcon, QrIcon, SearchIcon, TrashIcon } from '../components/Icons'
 import { QuestionEditor } from '../components/QuestionEditor'
+import { QuestionShareDialog } from '../components/QuestionShareDialog'
+import { QuestionTiming } from '../components/QuestionTiming'
 import type { EffectiveStatus, Question } from '../types'
 import { errorMessage, statusLabels } from '../ui'
 
@@ -25,6 +22,7 @@ export function AdminPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [editing, setEditing] = useState<Question | 'new' | null>(null)
+  const [sharing, setSharing] = useState<Question | null>(null)
   const [idFilter, setIdFilter] = useState('')
   const [idSortDirection, setIdSortDirection] =
     useState<SortDirection>('asc')
@@ -102,6 +100,9 @@ export function AdminPage() {
   const draftCount = questions.filter(
     (question) => question.effective_status === 'draft',
   ).length
+  const closedCount = questions.filter(
+    (question) => question.effective_status === 'closed',
+  ).length
   const filtersActive =
     idFilter !== '' ||
     search !== '' ||
@@ -135,7 +136,7 @@ export function AdminPage() {
         </div>
         {error && <div className="alert">{error}</div>}
         <section className="stats-grid" aria-label="Сводка по вопросам">
-          <div className="stat-card">
+          <div className="stat-card stat-card-total">
             <span>Всего вопросов</span>
             <strong>{questions.length}</strong>
           </div>
@@ -143,28 +144,20 @@ export function AdminPage() {
             <span>Сейчас в эфире</span>
             <strong>{liveCount}</strong>
           </div>
-          <div className="stat-card">
+          <div className="stat-card stat-card-scheduled">
             <span>Запланировано</span>
             <strong>{scheduledCount}</strong>
           </div>
-          <div className="stat-card">
+          <div className="stat-card stat-card-closed">
+            <span>Завершено</span>
+            <strong>{closedCount}</strong>
+          </div>
+          <div className="stat-card stat-card-draft">
             <span>Черновики</span>
             <strong>{draftCount}</strong>
           </div>
         </section>
         <section className="panel table-panel">
-          {!loading && questions.length > 0 && (
-            <div className="table-summary">
-              <button
-                className="refresh-button"
-                disabled={loading}
-                onClick={() => void loadQuestions()}
-                type="button"
-              >
-                <RefreshIcon /> Обновить
-              </button>
-            </div>
-          )}
           {loading ? (
             <p className="empty-state">Загружаем вопросы…</p>
           ) : questions.length === 0 ? (
@@ -328,9 +321,7 @@ export function AdminPage() {
                           </span>
                         </td>
                         <td className="time-cell">
-                          {question.show_time
-                            ? new Date(question.show_time).toLocaleString()
-                            : '—'}
+                          <QuestionTiming question={question} />
                         </td>
                         <td className="duration-cell">
                           {question.duration_seconds >= 60
@@ -353,6 +344,18 @@ export function AdminPage() {
                               >
                                 Результаты
                               </Link>
+                            )}
+                            {(question.effective_status === 'scheduled' ||
+                              question.effective_status === 'live') && (
+                              <button
+                                aria-label={`Показать QR-код для «${question.name}»`}
+                                className="icon-action qr-action"
+                                onClick={() => setSharing(question)}
+                                title="QR-код и ссылка"
+                                type="button"
+                              >
+                                <QrIcon />
+                              </button>
                             )}
                             <button
                               aria-label={`Изменить вопрос «${question.name}»`}
@@ -396,6 +399,12 @@ export function AdminPage() {
             setEditing(null)
             await loadQuestions()
           }}
+        />
+      )}
+      {sharing && (
+        <QuestionShareDialog
+          question={sharing}
+          onClose={() => setSharing(null)}
         />
       )}
     </AdminLayout>
