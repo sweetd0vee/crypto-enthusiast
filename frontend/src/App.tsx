@@ -11,6 +11,7 @@ import {
 import { ApiError, api } from './api'
 import type {
   ApiErrorCode,
+  EffectiveStatus,
   OptionInput,
   PublicQuestion,
   Question,
@@ -39,6 +40,42 @@ const statusLabels = {
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.body.message : fallback
+}
+
+function SearchIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="m16 16 4 4" />
+    </svg>
+  )
+}
+
+function RefreshIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M20 7v5h-5" />
+      <path d="M19 12a7 7 0 1 0-2 5" />
+    </svg>
+  )
+}
+
+function PencilIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="m4 20 4.2-1 10.7-10.7a2.1 2.1 0 0 0-3-3L5.2 16Z" />
+      <path d="m14.8 6.4 3 3" />
+    </svg>
+  )
+}
+
+function TrashIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7" />
+      <path d="M10 11v5m4-5v5" />
+    </svg>
+  )
 }
 
 function StateCard({
@@ -231,6 +268,18 @@ function AdminPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [editing, setEditing] = useState<Question | 'new' | null>(null)
+  const [idFilter, setIdFilter] = useState('')
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | EffectiveStatus>(
+    'all',
+  )
+  const [timeFilter, setTimeFilter] = useState<
+    'all' | 'today' | 'upcoming' | 'without-date'
+  >('all')
+  const [durationFilter, setDurationFilter] = useState<
+    'all' | 'short' | 'medium' | 'long'
+  >('all')
+  const [filterReferenceTime] = useState(() => new Date())
 
   const loadQuestions = useCallback(async () => {
     try {
@@ -273,6 +322,74 @@ function AdminPage() {
     }
   }
 
+  const normalizedSearch = search.trim().toLocaleLowerCase()
+  const normalizedId = idFilter.replace(/\D/g, '')
+  const filteredQuestions = questions
+    .filter((question) => {
+      const matchesStatus =
+        statusFilter === 'all' || question.effective_status === statusFilter
+      const matchesId =
+        normalizedId === '' || String(question.id).includes(normalizedId)
+      const searchable = [
+        question.name,
+        ...question.options.map((option) => option.label),
+      ]
+        .join(' ')
+        .toLocaleLowerCase()
+      const showDate = question.show_time
+        ? new Date(question.show_time)
+        : null
+      const matchesTime =
+        timeFilter === 'all' ||
+        (timeFilter === 'without-date' && showDate === null) ||
+        (timeFilter === 'upcoming' &&
+          showDate !== null &&
+          showDate.getTime() > filterReferenceTime.getTime()) ||
+        (timeFilter === 'today' &&
+          showDate !== null &&
+          showDate.toDateString() === filterReferenceTime.toDateString())
+      const matchesDuration =
+        durationFilter === 'all' ||
+        (durationFilter === 'short' &&
+          question.duration_seconds <= 60) ||
+        (durationFilter === 'medium' &&
+          question.duration_seconds > 60 &&
+          question.duration_seconds <= 300) ||
+        (durationFilter === 'long' && question.duration_seconds > 300)
+      return (
+        matchesId &&
+        matchesStatus &&
+        matchesTime &&
+        matchesDuration &&
+        (normalizedSearch === '' || searchable.includes(normalizedSearch))
+      )
+    })
+    .sort((left, right) => right.id - left.id)
+
+  const liveCount = questions.filter(
+    (question) => question.effective_status === 'live',
+  ).length
+  const scheduledCount = questions.filter(
+    (question) => question.effective_status === 'scheduled',
+  ).length
+  const draftCount = questions.filter(
+    (question) => question.effective_status === 'draft',
+  ).length
+  const filtersActive =
+    idFilter !== '' ||
+    search !== '' ||
+    statusFilter !== 'all' ||
+    timeFilter !== 'all' ||
+    durationFilter !== 'all'
+
+  function resetFilters() {
+    setIdFilter('')
+    setSearch('')
+    setStatusFilter('all')
+    setTimeFilter('all')
+    setDurationFilter('all')
+  }
+
   return (
     <AdminLayout>
       <main className="admin-main">
@@ -280,6 +397,7 @@ function AdminPage() {
           <div>
             <span className="eyebrow">Админка</span>
             <h1>Вопросы</h1>
+            <p>Управляйте эфирами, вариантами ответов и результатами.</p>
           </div>
           <button
             className="primary-button"
@@ -290,15 +408,143 @@ function AdminPage() {
           </button>
         </div>
         {error && <div className="alert">{error}</div>}
+        <section className="stats-grid" aria-label="Сводка по вопросам">
+          <div className="stat-card">
+            <span>Всего вопросов</span>
+            <strong>{questions.length}</strong>
+          </div>
+          <div className="stat-card stat-card-live">
+            <span>Сейчас в эфире</span>
+            <strong>{liveCount}</strong>
+          </div>
+          <div className="stat-card">
+            <span>Запланировано</span>
+            <strong>{scheduledCount}</strong>
+          </div>
+          <div className="stat-card">
+            <span>Черновики</span>
+            <strong>{draftCount}</strong>
+          </div>
+        </section>
         <section className="panel table-panel">
+          {!loading && questions.length > 0 && (
+            <div className="table-summary">
+              <span>
+                Показано {filteredQuestions.length} из {questions.length}
+              </span>
+              <button
+                className="refresh-button"
+                disabled={loading}
+                onClick={() => void loadQuestions()}
+                type="button"
+              >
+                <RefreshIcon /> Обновить
+              </button>
+            </div>
+          )}
           {loading ? (
             <p className="empty-state">Загружаем вопросы…</p>
           ) : questions.length === 0 ? (
             <p className="empty-state">Вопросов пока нет. Создайте первый.</p>
+          ) : filteredQuestions.length === 0 ? (
+            <div className="empty-state">
+              <strong>Ничего не найдено</strong>
+              <span>Измените запрос или сбросьте фильтры.</span>
+              <button
+                className="text-button"
+                onClick={resetFilters}
+                type="button"
+              >
+                Сбросить фильтры
+              </button>
+            </div>
           ) : (
             <div className="table-scroll">
               <table>
                 <thead>
+                  <tr className="column-filters">
+                    <th>
+                      <input
+                        aria-label="Фильтр по ID"
+                        inputMode="numeric"
+                        onChange={(event) => setIdFilter(event.target.value)}
+                        placeholder="# ID"
+                        value={idFilter}
+                      />
+                    </th>
+                    <th>
+                      <div className="column-search">
+                        <SearchIcon />
+                        <input
+                          aria-label="Поиск по названию и вариантам"
+                          onChange={(event) => setSearch(event.target.value)}
+                          placeholder="Название или вариант ответа"
+                          type="search"
+                          value={search}
+                        />
+                      </div>
+                    </th>
+                    <th>
+                      <select
+                        aria-label="Фильтр по статусу"
+                        onChange={(event) =>
+                          setStatusFilter(
+                            event.target.value as 'all' | EffectiveStatus,
+                          )
+                        }
+                        value={statusFilter}
+                      >
+                        <option value="all">Все статусы</option>
+                        <option value="live">В эфире</option>
+                        <option value="scheduled">Запланированные</option>
+                        <option value="draft">Черновики</option>
+                        <option value="closed">Завершённые</option>
+                        <option value="cancelled">Отменённые</option>
+                      </select>
+                    </th>
+                    <th>
+                      <select
+                        aria-label="Фильтр по времени показа"
+                        onChange={(event) =>
+                          setTimeFilter(
+                            event.target.value as typeof timeFilter,
+                          )
+                        }
+                        value={timeFilter}
+                      >
+                        <option value="all">Любое время</option>
+                        <option value="today">Сегодня</option>
+                        <option value="upcoming">Предстоящие</option>
+                        <option value="without-date">Без даты</option>
+                      </select>
+                    </th>
+                    <th>
+                      <select
+                        aria-label="Фильтр по длительности"
+                        onChange={(event) =>
+                          setDurationFilter(
+                            event.target.value as typeof durationFilter,
+                          )
+                        }
+                        value={durationFilter}
+                      >
+                        <option value="all">Любая</option>
+                        <option value="short">До 1 минуты</option>
+                        <option value="medium">1–5 минут</option>
+                        <option value="long">Больше 5 минут</option>
+                      </select>
+                    </th>
+                    <th>
+                      <button
+                        className="reset-filters"
+                        disabled={!filtersActive}
+                        onClick={resetFilters}
+                        type="button"
+                      >
+                        Сбросить
+                      </button>
+                    </th>
+                  </tr>
                   <tr>
                     <th>ID</th>
                     <th>Название</th>
@@ -309,10 +555,24 @@ function AdminPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {questions.map((question) => (
+                  {filteredQuestions.map((question) => (
                     <tr key={question.id}>
-                      <td className="muted">#{question.id}</td>
-                      <td className="question-name">{question.name}</td>
+                      <td>
+                        <span className="id-badge">#{question.id}</span>
+                      </td>
+                      <td>
+                        <div className="question-cell">
+                          <strong>{question.name}</strong>
+                          <div className="option-preview">
+                            {question.options.slice(0, 3).map((option) => (
+                              <span key={option.key}>{option.label}</span>
+                            ))}
+                            {question.options.length > 3 && (
+                              <span>+{question.options.length - 3}</span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
                       <td>
                         <span
                           className={`status status-${question.effective_status}`}
@@ -320,29 +580,55 @@ function AdminPage() {
                           {statusLabels[question.effective_status]}
                         </span>
                       </td>
-                      <td>
+                      <td className="time-cell">
                         {question.show_time
                           ? new Date(question.show_time).toLocaleString()
                           : '—'}
                       </td>
-                      <td>{question.duration_seconds} сек.</td>
+                      <td className="duration-cell">
+                        {question.duration_seconds >= 60
+                          ? `${Math.floor(question.duration_seconds / 60)} мин.`
+                          : `${question.duration_seconds} сек.`}
+                      </td>
                       <td>
                         <div className="row-actions">
-                          <Link to={`/admin/questions/${question.id}`}>
-                            Результаты
-                          </Link>
+                          {question.effective_status === 'draft' ? (
+                            <span
+                              className="action-button action-disabled"
+                              title="У черновика ещё нет результатов"
+                            >
+                              Результаты
+                            </span>
+                          ) : (
+                            <Link
+                              className="action-button action-results"
+                              to={`/admin/questions/${question.id}`}
+                            >
+                              Результаты
+                            </Link>
+                          )}
                           <button
+                            aria-label={`Изменить вопрос «${question.name}»`}
+                            className="icon-action"
                             onClick={() => setEditing(question)}
+                            title="Изменить"
                             type="button"
                           >
-                            Изменить
+                            <PencilIcon />
                           </button>
                           <button
-                            className="danger-link"
+                            aria-label={`Удалить вопрос «${question.name}»`}
+                            className="icon-action danger-link"
+                            disabled={question.status !== 'draft'}
                             onClick={() => void remove(question)}
+                            title={
+                              question.status === 'draft'
+                                ? 'Удалить черновик'
+                                : 'Удалить можно только черновик'
+                            }
                             type="button"
                           >
-                            Удалить
+                            <TrashIcon />
                           </button>
                         </div>
                       </td>
