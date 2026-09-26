@@ -22,16 +22,16 @@ app/store/redis.py
 migrations/
 tests/
 pyproject.toml
-docker-compose.yml
+docker/compose.yml
 README.md                    # как поднять и прогнать сценарии приёмки
 docs/                        # эта спецификация
 ```
 
 ## Шаг 1. Каркас и локальный запуск
 
-- `docker-compose.yml`: `postgres:16`, `redis:7`, сервис `api` с `DATABASE_URL`, `REDIS_URL`, `ADMIN_TOKEN`, `IP_HASH_SALT`, `COUNTER_SHARDS=1`.
+- `docker/compose.yml`: `postgres:16`, `redis:7`, сервисы `api` и `frontend`; API получает `DATABASE_URL`, `REDIS_URL`, `ADMIN_TOKEN`, `IP_HASH_SALT`, `COUNTER_SHARDS=1`.
 - `GET /healthz` проверяет оба хранилища и отвечает `200`.
-- README: `docker compose up --build`, затем переменные и базовый curl.
+- README: `docker compose -f docker/compose.yml up --build`, затем переменные и базовый curl.
 
 Готово, когда health зелёный на чистой машине с Docker.
 
@@ -116,7 +116,7 @@ docs/                        # эта спецификация
 README на русском, коротко:
 
 1. Требования: Docker. Python 3.12 нужен только если API запускают без контейнера.
-2. `docker compose up --build`.
+2. `docker compose -f docker/compose.yml up --build`.
 3. Токен админа из compose (для тестового — значение по умолчанию `dev-admin-token`, в проде так не оставляем).
 4. Десять сценариев из раздела приёмки ТЗ — готовыми curl, с ожидаемым кодом.
 5. Ссылка на `docs/` как на описание архитектуры.

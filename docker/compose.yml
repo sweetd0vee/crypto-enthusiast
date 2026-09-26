@@ -1,0 +1,94 @@
+name: tv-poll
+
+services:
+  postgres:
+    container_name: tv-poll-postgres
+    image: postgres:16
+    pull_policy: missing
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-poll}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-poll}
+      POSTGRES_DB: ${POSTGRES_DB:-poll}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-poll} -d ${POSTGRES_DB:-poll}",
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    container_name: tv-poll-redis
+    image: redis:7
+    pull_policy: missing
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    container_name: tv-poll-api
+    build:
+      context: ..
+      dockerfile: docker/backend.Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-poll}:${POSTGRES_PASSWORD:-poll}@postgres:5432/${POSTGRES_DB:-poll}
+      REDIS_URL: redis://redis:6379/0
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-dev-admin-token}
+      IP_HASH_SALT: ${IP_HASH_SALT:-dev-salt}
+      COUNTER_SHARDS: ${COUNTER_SHARDS:-1}
+      VOTE_ASYNC: ${VOTE_ASYNC:-false}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz')",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  frontend:
+    container_name: tv-poll-frontend
+    build:
+      context: ..
+      dockerfile: docker/frontend.Dockerfile
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

@@ -10,7 +10,7 @@
 2. Зритель открывает `/questionnaire/{id}` только в минуту показа и отправляет один вариант.
 3. Повтор с того же браузера не считается. Другой браузер с того же IP — считается.
 4. Админ открывает результат и видит, сколько голосов у каждого варианта.
-5. `docker compose up` поднимает Postgres, Redis и API. В README есть curl на эти четыре пункта.
+5. `docker compose -f docker/compose.yml up` поднимает Postgres, Redis, API и frontend. В README есть curl на эти четыре пункта.
 
 Фронт — после того, как эти пункты проходят без него.
 
@@ -34,7 +34,7 @@ Cookie `vid` выдаёт сервер. IP в уникальность не вх
 
 Стек: Python 3.12, FastAPI, PostgreSQL 16, Redis 7. Каталог `app/`, как в [06-stack.md](06-stack.md).
 
-1. **Compose.** Сервисы `postgres`, `redis`, `api`. `GET /healthz` отвечает 200.
+1. **Compose.** Сервисы `postgres`, `redis`, `api`, `frontend`. `GET /healthz` отвечает 200.
 2. **Таблицы.** `question`, `question_option`, `vote`, `question_result`. Миграция Alembic.
 3. **CRUD админа** под заголовком `Authorization: Bearer <токен>`:
    - `POST /questions`, `GET /questions`, `GET /questions/{id}`, `PUT /questions/{id}`, `DELETE /questions/{id}`.

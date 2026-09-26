@@ -5,13 +5,14 @@ WORKDIR /srv
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-COPY pyproject.toml ./
-COPY app ./app
-COPY migrations ./migrations
-COPY alembic.ini ./
+COPY backend/pyproject.toml ./
+COPY backend/app ./app
+COPY backend/migrations ./migrations
+COPY backend/alembic.ini ./
 
 RUN pip install --no-cache-dir . \
-    && useradd --create-home --uid 10001 appuser
+    && useradd --create-home --uid 10001 appuser \
+    && chown -R appuser:appuser /srv
 
 USER appuser
 

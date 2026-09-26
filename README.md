@@ -87,14 +87,18 @@ Django не берём: его админка и сессии расходятс
 
 ## Локальный запуск и проверка
 
-Контур: PostgreSQL 16, Redis 7, API на порту 8080. Секреты только из окружения.
+Единый Docker-контур поднимает PostgreSQL, Redis, API и production-сборку
+frontend через Nginx:
 
 ```bash
-cd backend
-docker compose up --build
+docker compose -f docker/compose.yml up --build
 ```
 
-Фронтенд запускается отдельно во втором терминале:
+Интерфейс доступен на `http://localhost:3000`: форма зрителя — `/q/<id>`,
+админка — `/admin`. Для локального входа используйте токен
+`dev-admin-token`. API также доступен напрямую на `http://localhost:8080`.
+
+Для разработки frontend с HMR можно отдельно запустить Vite:
 
 ```bash
 cd frontend
@@ -102,9 +106,7 @@ npm install
 npm run dev
 ```
 
-Vite откроет интерфейс на `http://localhost:5173`: форма зрителя — `/q/<id>`,
-админка — `/admin`. Для локального входа используйте токен
-`dev-admin-token`. Запросы к API проксируются на `localhost:8080`.
+Vite откроет `http://localhost:5173` и проксирует API на `localhost:8080`.
 
 Переменные сервиса `api`:
 
@@ -269,7 +271,8 @@ python3.12 -m venv .venv
 Включить четыре шарда и пакетную запись журнала, создать живой вопрос и передать его id скрипту:
 
 ```bash
-VOTE_ASYNC=true COUNTER_SHARDS=4 docker compose up --build -d --force-recreate api
+VOTE_ASYNC=true COUNTER_SHARDS=4 \
+  docker compose -f ../docker/compose.yml up --build -d --force-recreate api
 .venv/bin/python scripts/load_test.py 1 --requests 2000 --concurrency 100
 ```
 
@@ -284,7 +287,10 @@ VOTE_ASYNC=true COUNTER_SHARDS=4 docker compose up --build -d --force-recreate a
 - `VOTE_ASYNC=true` пишет журнал пачками до 1000 строк или раз в 50 мс. Очередь процесса ограничена; промышленный вариант заменяет её внешним брокером и отдельными воркерами.
 - PostgreSQL хранит журнал и снимки пересчёта, но дашборд не выполняет `GROUP BY` на горячем пути.
 
-Фронт в Compose не входит. Когда API уже отвечает, каталог `frontend/` поднимается отдельно (`npm run dev`), прокси Vite смотрит на `localhost:8080`, чтобы cookie была same-site.
+Docker-файлы собраны в `docker/`: один Compose запускает оба хранилища,
+API и Nginx с frontend. Nginx проксирует API-маршруты внутри Docker-сети,
+поэтому cookie `vid` остаётся same-site. Для локальной разработки остаётся
+Vite-прокси на `localhost:8080`.
 
 Порядок сборки по шагам: [`docs/07-short-plan.md`](docs/07-short-plan.md), бэкенд — [`docs/03-backend-plan.md`](docs/03-backend-plan.md), фронт — [`docs/04-frontend-plan.md`](docs/04-frontend-plan.md).
 

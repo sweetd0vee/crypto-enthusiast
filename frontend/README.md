@@ -1,7 +1,14 @@
 # Фронтенд TV Poll
 
-React-интерфейс формы голосования и админки. Перед запуском поднимите API из
-`../backend`.
+React-интерфейс формы голосования и админки.
+
+Production-сборка входит в общий Docker-контур:
+
+```bash
+docker compose -f ../docker/compose.yml up --build
+```
+
+Интерфейс будет доступен на `http://localhost:3000`.
 
 ```bash
 npm install

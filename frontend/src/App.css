@@ -409,8 +409,10 @@ select:focus {
 }
 
 .table-summary .refresh-button {
-  min-height: 36px;
+  width: 180px;
+  min-height: 48px;
   display: inline-flex;
+  justify-content: center;
   align-items: center;
   gap: 7px;
   padding: 0 11px;
@@ -456,6 +458,23 @@ th {
   text-transform: uppercase;
 }
 
+.sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+
+.sort-button span {
+  color: var(--primary);
+  font-size: 14px;
+}
+
 .column-filters th {
   padding-top: 12px;
   padding-bottom: 12px;
@@ -498,13 +517,23 @@ th {
 }
 
 .reset-filters {
-  min-height: 40px;
+  width: 180px;
+  min-height: 48px;
   padding: 8px 11px;
   border-radius: 8px;
   background: #f0f2f7;
   color: #626a7e;
   font-size: 12px;
   font-weight: 750;
+}
+
+.create-button {
+  width: 180px;
+  min-height: 48px;
+}
+
+.column-filters th:last-child {
+  text-align: right;
 }
 
 .reset-filters:disabled {
@@ -521,6 +550,18 @@ tbody tr {
 
 tbody tr:hover {
   background: #fafbff;
+}
+
+tbody tr:has(.status-live) td:first-child {
+  box-shadow: inset 3px 0 #00a982;
+}
+
+.no-results-row:hover {
+  background: #fff;
+}
+
+.no-results-row td {
+  padding: 0;
 }
 
 th:nth-child(1) {

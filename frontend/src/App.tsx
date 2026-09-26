@@ -6,261 +6,34 @@ import {
   Route,
   Routes,
   useNavigate,
-  useParams,
 } from 'react-router-dom'
+import {
+  buildQuestionNumbers,
+  filterQuestions,
+  type DurationFilter,
+  type SortDirection,
+  type TimeFilter,
+} from './adminQuestions'
 import { ApiError, api } from './api'
+import { AdminLayout } from './components/AdminLayout'
+import {
+  PencilIcon,
+  RefreshIcon,
+  SearchIcon,
+  TrashIcon,
+} from './components/Icons'
+import { LoginPage } from './pages/LoginPage'
+import { ResultsPage } from './pages/ResultsPage'
+import { ViewerPage } from './pages/ViewerPage'
 import type {
-  ApiErrorCode,
   EffectiveStatus,
   OptionInput,
-  PublicQuestion,
   Question,
   QuestionInput,
-  QuestionResult,
   QuestionStatus,
 } from './types'
+import { errorMessage, statusLabels, toLocalInput } from './ui'
 import './App.css'
-
-const viewerMessages: Partial<Record<ApiErrorCode, string>> = {
-  window_not_started: 'Голосование ещё не началось',
-  window_closed: 'Время ролика вышло',
-  already_voted: 'Вы уже ответили',
-  not_published: 'Ссылка недействительна',
-  not_found: 'Ссылка недействительна',
-}
-
-const statusLabels = {
-  draft: 'Черновик',
-  published: 'Опубликован',
-  cancelled: 'Отменён',
-  scheduled: 'Запланирован',
-  live: 'В эфире',
-  closed: 'Завершён',
-}
-
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof ApiError ? error.body.message : fallback
-}
-
-function SearchIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24">
-      <circle cx="11" cy="11" r="6.5" />
-      <path d="m16 16 4 4" />
-    </svg>
-  )
-}
-
-function RefreshIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24">
-      <path d="M20 7v5h-5" />
-      <path d="M19 12a7 7 0 1 0-2 5" />
-    </svg>
-  )
-}
-
-function PencilIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24">
-      <path d="m4 20 4.2-1 10.7-10.7a2.1 2.1 0 0 0-3-3L5.2 16Z" />
-      <path d="m14.8 6.4 3 3" />
-    </svg>
-  )
-}
-
-function TrashIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24">
-      <path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7" />
-      <path d="M10 11v5m4-5v5" />
-    </svg>
-  )
-}
-
-function StateCard({
-  title,
-  icon,
-  busy = false,
-}: {
-  title: string
-  icon?: string
-  busy?: boolean
-}) {
-  return (
-    <main className="viewer-shell">
-      <section className="viewer-card state-card">
-        {icon && <span className="success-icon">{icon}</span>}
-        {busy && <span className="spinner" aria-hidden="true" />}
-        <h1>{title}</h1>
-      </section>
-    </main>
-  )
-}
-
-function ViewerPage() {
-  const { id = '' } = useParams()
-  const [question, setQuestion] = useState<PublicQuestion | null>(null)
-  const [state, setState] = useState<
-    'loading' | 'ready' | 'submitting' | 'success' | 'message' | 'network'
-  >('loading')
-  const [message, setMessage] = useState('')
-
-  useEffect(() => {
-    let active = true
-    api
-      .getPublicQuestion(id)
-      .then((data) => {
-        if (active) {
-          setQuestion(data)
-          setState('ready')
-        }
-      })
-      .catch((error: unknown) => {
-        if (!active) return
-        if (error instanceof ApiError) {
-          setMessage(
-            viewerMessages[error.body.error] ?? 'Не удалось открыть голосование',
-          )
-          setState('message')
-        } else {
-          setMessage('Не удалось загрузить, проверьте подключение')
-          setState('message')
-        }
-      })
-    return () => {
-      active = false
-    }
-  }, [id])
-
-  async function submit(option: string) {
-    if (state !== 'ready') return
-    setState('submitting')
-    try {
-      await api.vote(id, option)
-      setState('success')
-    } catch (error) {
-      if (error instanceof ApiError) {
-        setMessage(
-          viewerMessages[error.body.error] ??
-            (error.body.error === 'invalid_option'
-              ? 'Такого варианта больше нет'
-              : error.body.message),
-        )
-        setState('message')
-      } else {
-        setMessage('Не удалось отправить, попробуйте ещё раз')
-        setState('network')
-      }
-    }
-  }
-
-  if (state === 'loading') {
-    return <StateCard title="Загружаем голосование…" busy />
-  }
-  if (state === 'success') {
-    return <StateCard title="Ответ принят" icon="✓" />
-  }
-  if (state === 'message' || !question) {
-    return <StateCard title={message} />
-  }
-
-  return (
-    <main className="viewer-shell">
-      <section className="viewer-card">
-        <span className="eyebrow">ТВ-опрос</span>
-        <h1>{question.name}</h1>
-        <p className="deadline">
-          Можно ответить до{' '}
-          {new Date(question.closes_at).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-          })}
-        </p>
-        <div className="option-list">
-          {question.options.map((option) => (
-            <button
-              className="option-button"
-              disabled={state === 'submitting'}
-              key={option.key}
-              onClick={() => void submit(option.key)}
-              type="button"
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-        {state === 'network' && (
-          <div className="inline-error">
-            <span>{message}</span>
-            <button type="button" onClick={() => setState('ready')}>
-              Повторить
-            </button>
-          </div>
-        )}
-      </section>
-    </main>
-  )
-}
-
-function LoginPage() {
-  const navigate = useNavigate()
-  const [token, setToken] = useState('')
-
-  function login(event: FormEvent) {
-    event.preventDefault()
-    if (!token.trim()) return
-    sessionStorage.setItem('adminToken', token.trim())
-    navigate('/admin', { replace: true })
-  }
-
-  return (
-    <main className="login-shell">
-      <form className="panel login-card" onSubmit={login}>
-        <span className="eyebrow">Управление опросами</span>
-        <h1>Вход в админку</h1>
-        <label>
-          Токен администратора
-          <input
-            autoFocus
-            onChange={(event) => setToken(event.target.value)}
-            placeholder="Введите токен"
-            type="password"
-            value={token}
-          />
-        </label>
-        <button className="primary-button" type="submit">
-          Войти
-        </button>
-      </form>
-    </main>
-  )
-}
-
-function AdminLayout({ children }: { children: React.ReactNode }) {
-  const navigate = useNavigate()
-  return (
-    <div className="admin-shell">
-      <header className="admin-header">
-        <Link className="brand" to="/admin">
-          <span className="brand-mark">Q</span>
-          TV Poll
-        </Link>
-        <button
-          className="text-button"
-          onClick={() => {
-            sessionStorage.removeItem('adminToken')
-            navigate('/admin/login')
-          }}
-          type="button"
-        >
-          Выйти
-        </button>
-      </header>
-      {children}
-    </div>
-  )
-}
 
 function AdminPage() {
   const navigate = useNavigate()
@@ -269,16 +42,15 @@ function AdminPage() {
   const [error, setError] = useState('')
   const [editing, setEditing] = useState<Question | 'new' | null>(null)
   const [idFilter, setIdFilter] = useState('')
+  const [idSortDirection, setIdSortDirection] =
+    useState<SortDirection>('asc')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | EffectiveStatus>(
     'all',
   )
-  const [timeFilter, setTimeFilter] = useState<
-    'all' | 'today' | 'upcoming' | 'without-date'
-  >('all')
-  const [durationFilter, setDurationFilter] = useState<
-    'all' | 'short' | 'medium' | 'long'
-  >('all')
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>('all')
+  const [durationFilter, setDurationFilter] =
+    useState<DurationFilter>('all')
   const [filterReferenceTime] = useState(() => new Date())
 
   const loadQuestions = useCallback(async () => {
@@ -322,49 +94,20 @@ function AdminPage() {
     }
   }
 
-  const normalizedSearch = search.trim().toLocaleLowerCase()
-  const normalizedId = idFilter.replace(/\D/g, '')
-  const filteredQuestions = questions
-    .filter((question) => {
-      const matchesStatus =
-        statusFilter === 'all' || question.effective_status === statusFilter
-      const matchesId =
-        normalizedId === '' || String(question.id).includes(normalizedId)
-      const searchable = [
-        question.name,
-        ...question.options.map((option) => option.label),
-      ]
-        .join(' ')
-        .toLocaleLowerCase()
-      const showDate = question.show_time
-        ? new Date(question.show_time)
-        : null
-      const matchesTime =
-        timeFilter === 'all' ||
-        (timeFilter === 'without-date' && showDate === null) ||
-        (timeFilter === 'upcoming' &&
-          showDate !== null &&
-          showDate.getTime() > filterReferenceTime.getTime()) ||
-        (timeFilter === 'today' &&
-          showDate !== null &&
-          showDate.toDateString() === filterReferenceTime.toDateString())
-      const matchesDuration =
-        durationFilter === 'all' ||
-        (durationFilter === 'short' &&
-          question.duration_seconds <= 60) ||
-        (durationFilter === 'medium' &&
-          question.duration_seconds > 60 &&
-          question.duration_seconds <= 300) ||
-        (durationFilter === 'long' && question.duration_seconds > 300)
-      return (
-        matchesId &&
-        matchesStatus &&
-        matchesTime &&
-        matchesDuration &&
-        (normalizedSearch === '' || searchable.includes(normalizedSearch))
-      )
-    })
-    .sort((left, right) => right.id - left.id)
+  const questionNumbers = buildQuestionNumbers(questions)
+  const filteredQuestions = filterQuestions(
+    questions,
+    {
+      number: idFilter,
+      search,
+      status: statusFilter,
+      time: timeFilter,
+      duration: durationFilter,
+      sortDirection: idSortDirection,
+    },
+    filterReferenceTime,
+    questionNumbers,
+  )
 
   const liveCount = questions.filter(
     (question) => question.effective_status === 'live',
@@ -397,10 +140,9 @@ function AdminPage() {
           <div>
             <span className="eyebrow">Админка</span>
             <h1>Вопросы</h1>
-            <p>Управляйте эфирами, вариантами ответов и результатами.</p>
           </div>
           <button
-            className="primary-button"
+            className="primary-button create-button"
             onClick={() => setEditing('new')}
             type="button"
           >
@@ -446,18 +188,6 @@ function AdminPage() {
             <p className="empty-state">Загружаем вопросы…</p>
           ) : questions.length === 0 ? (
             <p className="empty-state">Вопросов пока нет. Создайте первый.</p>
-          ) : filteredQuestions.length === 0 ? (
-            <div className="empty-state">
-              <strong>Ничего не найдено</strong>
-              <span>Измените запрос или сбросьте фильтры.</span>
-              <button
-                className="text-button"
-                onClick={resetFilters}
-                type="button"
-              >
-                Сбросить фильтры
-              </button>
-            </div>
           ) : (
             <div className="table-scroll">
               <table>
@@ -465,10 +195,10 @@ function AdminPage() {
                   <tr className="column-filters">
                     <th>
                       <input
-                        aria-label="Фильтр по ID"
+                        aria-label="Фильтр по номеру"
                         inputMode="numeric"
                         onChange={(event) => setIdFilter(event.target.value)}
-                        placeholder="# ID"
+                        placeholder="№"
                         value={idFilter}
                       />
                     </th>
@@ -546,7 +276,24 @@ function AdminPage() {
                     </th>
                   </tr>
                   <tr>
-                    <th>ID</th>
+                    <th>
+                      <button
+                        aria-label={`Сортировать номера ${
+                          idSortDirection === 'asc'
+                            ? 'по убыванию'
+                            : 'по возрастанию'
+                        }`}
+                        className="sort-button"
+                        onClick={() =>
+                          setIdSortDirection((current) =>
+                            current === 'asc' ? 'desc' : 'asc',
+                          )
+                        }
+                        type="button"
+                      >
+                        № <span>{idSortDirection === 'asc' ? '↑' : '↓'}</span>
+                      </button>
+                    </th>
                     <th>Название</th>
                     <th>Статус</th>
                     <th>Время показа</th>
@@ -555,10 +302,29 @@ function AdminPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredQuestions.map((question) => (
+                  {filteredQuestions.length === 0 ? (
+                    <tr className="no-results-row">
+                      <td colSpan={6}>
+                        <div className="empty-state">
+                          <strong>Ничего не найдено</strong>
+                          <span>Измените запрос или сбросьте фильтры.</span>
+                          <button
+                            className="text-button"
+                            onClick={resetFilters}
+                            type="button"
+                          >
+                            Сбросить фильтры
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredQuestions.map((question) => (
                     <tr key={question.id}>
                       <td>
-                        <span className="id-badge">#{question.id}</span>
+                        <span className="id-badge">
+                          #{questionNumbers.get(question.id)}
+                        </span>
                       </td>
                       <td>
                         <div className="question-cell">
@@ -633,7 +399,8 @@ function AdminPage() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -652,13 +419,6 @@ function AdminPage() {
       )}
     </AdminLayout>
   )
-}
-
-function toLocalInput(value: string | null): string {
-  if (!value) return ''
-  const date = new Date(value)
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
-  return local.toISOString().slice(0, 16)
 }
 
 function QuestionEditor({
@@ -864,104 +624,6 @@ function QuestionEditor({
         </form>
       </section>
     </div>
-  )
-}
-
-function ResultsPage() {
-  const { id = '' } = useParams()
-  const navigate = useNavigate()
-  const [result, setResult] = useState<QuestionResult | null>(null)
-  const [error, setError] = useState('')
-
-  const loadResults = useCallback(async () => {
-    try {
-      setResult(await api.getResults(id))
-      setError('')
-    } catch (requestError) {
-      if (
-        requestError instanceof ApiError &&
-        requestError.body.error === 'unauthorized'
-      ) {
-        sessionStorage.removeItem('adminToken')
-        navigate('/admin/login', { replace: true })
-        return
-      }
-      setError(errorMessage(requestError, 'Не удалось загрузить результаты'))
-    }
-  }, [id, navigate])
-
-  useEffect(() => {
-    // Loading remote state is the intended synchronization for this page.
-    // oxlint-disable-next-line react/set-state-in-effect
-    void loadResults()
-  }, [loadResults])
-
-  useEffect(() => {
-    if (result?.effective_status !== 'live') return
-    const timer = window.setInterval(() => void loadResults(), 2000)
-    return () => window.clearInterval(timer)
-  }, [loadResults, result?.effective_status])
-
-  return (
-    <AdminLayout>
-      <main className="admin-main results-main">
-        <Link className="back-link" to="/admin">
-          ← Все вопросы
-        </Link>
-        {error && <div className="alert">{error}</div>}
-        {!result ? (
-          <section className="panel empty-state">Загружаем результаты…</section>
-        ) : (
-          <>
-            <div className="page-heading result-heading">
-              <div>
-                <span className="eyebrow">Результаты · #{result.question_id}</span>
-                <h1>{result.name}</h1>
-              </div>
-              <div className="result-total">
-                <strong>{result.total.toLocaleString()}</strong>
-                <span>ответов</span>
-              </div>
-            </div>
-            <div className="result-meta">
-              <span className={`status status-${result.effective_status}`}>
-                {statusLabels[result.effective_status]}
-              </span>
-              {result.effective_status === 'live' && (
-                <span className="live-note">Обновляется каждые 2 секунды</span>
-              )}
-            </div>
-            <section className="panel results-panel">
-              {result.total === 0 && (
-                <p className="empty-results">Пока нет ответов</p>
-              )}
-              <div className="bars">
-                {result.counts.map((row) => {
-                  const percent =
-                    result.total === 0 ? 0 : (row.count / result.total) * 100
-                  return (
-                    <div className="bar-row" key={row.key}>
-                      <div className="bar-label">
-                        <span>{row.label}</span>
-                        <strong>
-                          {row.count.toLocaleString()} · {percent.toFixed(1)}%
-                        </strong>
-                      </div>
-                      <div className="bar-track">
-                        <div
-                          className="bar-fill"
-                          style={{ width: `${percent}%` }}
-                        />
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </section>
-          </>
-        )}
-      </main>
-    </AdminLayout>
   )
 }
 

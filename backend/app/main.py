@@ -38,13 +38,6 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         logger.info("api stopped")
 
 
-app = FastAPI(title="TV poll", lifespan=lifespan)
-install_error_handlers(app)
-app.include_router(public_router)
-app.include_router(admin_router)
-
-
-@app.get("/healthz")
 async def healthz() -> JSONResponse:
     try:
         await ping_db()
@@ -56,3 +49,15 @@ async def healthz() -> JSONResponse:
             content={"error": "unavailable", "message": "Хранилище недоступно"},
         )
     return JSONResponse(status_code=200, content={"status": "ok"})
+
+
+def create_app() -> FastAPI:
+    application = FastAPI(title="TV poll", lifespan=lifespan)
+    install_error_handlers(application)
+    application.include_router(public_router)
+    application.include_router(admin_router)
+    application.add_api_route("/healthz", healthz, methods=["GET"])
+    return application
+
+
+app = create_app()
