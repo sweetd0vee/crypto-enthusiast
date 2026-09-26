@@ -105,7 +105,7 @@ docker-compose.yml
 
 ## Фронтенд
 
-Каталог `web/`. Подробный состав экранов — в [плане фронта](04-frontend-plan.md).
+Каталог `frontend/`. Подробный состав экранов — в [плане фронта](04-frontend-plan.md).
 
 ### React 18 и TypeScript
 

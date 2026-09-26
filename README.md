@@ -94,6 +94,18 @@ cd backend
 docker compose up --build
 ```
 
+Фронтенд запускается отдельно во втором терминале:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Vite откроет интерфейс на `http://localhost:5173`: форма зрителя — `/q/<id>`,
+админка — `/admin`. Для локального входа используйте токен
+`dev-admin-token`. Запросы к API проксируются на `localhost:8080`.
+
 Переменные сервиса `api`:
 
 | Переменная | Смысл |
@@ -272,7 +284,7 @@ VOTE_ASYNC=true COUNTER_SHARDS=4 docker compose up --build -d --force-recreate a
 - `VOTE_ASYNC=true` пишет журнал пачками до 1000 строк или раз в 50 мс. Очередь процесса ограничена; промышленный вариант заменяет её внешним брокером и отдельными воркерами.
 - PostgreSQL хранит журнал и снимки пересчёта, но дашборд не выполняет `GROUP BY` на горячем пути.
 
-Фронт в Compose не входит. Когда API уже отвечает, каталог `web/` поднимается отдельно (`npm run dev`), прокси Vite смотрит на `localhost:8080`, чтобы cookie была same-site.
+Фронт в Compose не входит. Когда API уже отвечает, каталог `frontend/` поднимается отдельно (`npm run dev`), прокси Vite смотрит на `localhost:8080`, чтобы cookie была same-site.
 
 Порядок сборки по шагам: [`docs/07-short-plan.md`](docs/07-short-plan.md), бэкенд — [`docs/03-backend-plan.md`](docs/03-backend-plan.md), фронт — [`docs/04-frontend-plan.md`](docs/04-frontend-plan.md).
 
