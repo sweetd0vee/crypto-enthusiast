@@ -1,9 +1,16 @@
 from datetime import UTC, datetime, timedelta
 
+import fakeredis.aioredis
 import pytest
 from pydantic import ValidationError
 
 from app.question.models import QuestionCreate, effective_status
+from app.question.service import _has_votes
+
+
+class EmptyVoteConnection:
+    async def scalar(self, _statement: object) -> bool:
+        return False
 
 
 def test_effective_status_at_window_boundaries() -> None:
@@ -40,3 +47,14 @@ def test_option_keys_must_be_unique() -> None:
                 {"key": "same", "label": "B"},
             ],
         )
+
+
+async def test_zero_counter_hash_does_not_count_as_votes() -> None:
+    redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    await redis.hset("results:7:0", mapping={"yes": 0, "no": 0})
+
+    assert await _has_votes(EmptyVoteConnection(), redis, 7, 1) is False
+
+    await redis.hset("results:7:0", "yes", 1)
+
+    assert await _has_votes(EmptyVoteConnection(), redis, 7, 1) is True

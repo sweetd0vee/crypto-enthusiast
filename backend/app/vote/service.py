@@ -4,7 +4,6 @@ import hashlib
 import logging
 import math
 import zlib
-from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 
 from redis.asyncio import Redis
@@ -23,6 +22,21 @@ DEDUP_TTL_MARGIN_SECONDS = 86_400
 
 logger = logging.getLogger(__name__)
 
+ACCEPT_VOTE_SCRIPT = """
+if redis.call("EXISTS", KEYS[1]) == 1 then
+    return 0
+end
+
+local counter_type = redis.call("TYPE", KEYS[2])
+if counter_type["ok"] ~= "none" and counter_type["ok"] ~= "hash" then
+    return redis.error_reply("vote counter key has an unexpected type")
+end
+
+redis.call("SET", KEYS[1], "1", "EX", ARGV[1])
+redis.call("HINCRBY", KEYS[2], ARGV[2], 1)
+return 1
+"""
+
 
 def dedup_hash(question_id: int, viewer_id: str) -> str:
     return hashlib.sha256(f"{question_id}|{viewer_id}".encode()).hexdigest()
@@ -30,6 +44,25 @@ def dedup_hash(question_id: int, viewer_id: str) -> str:
 
 def client_ip_hash(client_ip: str, salt: str) -> str:
     return hashlib.sha256(f"{client_ip}|{salt}".encode()).hexdigest()
+
+
+async def _reserve_and_increment(
+    redis: Redis,
+    *,
+    dedup_key: str,
+    counter_key: str,
+    ttl: int,
+    option_key: str,
+) -> bool:
+    result = await redis.eval(
+        ACCEPT_VOTE_SCRIPT,
+        2,
+        dedup_key,
+        counter_key,
+        ttl,
+        option_key,
+    )
+    return result == 1
 
 
 async def _load_question(
@@ -115,16 +148,19 @@ async def accept_vote(
     redis_dedup_key = vote_dedup_key(question_id, dedup_key)
     ttl = math.ceil((closes_at - current_time).total_seconds()) + DEDUP_TTL_MARGIN_SECONDS
     try:
-        first_vote = await redis.set(redis_dedup_key, "1", ex=ttl, nx=True)
+        shard = zlib.crc32(dedup_key.encode()) % counter_shards
+        first_vote = await _reserve_and_increment(
+            redis,
+            dedup_key=redis_dedup_key,
+            counter_key=result_counter_key(question_id, shard),
+            ttl=ttl,
+            option_key=option_key,
+        )
         if not first_vote:
             raise AppError(409, "already_voted", "Вы уже проголосовали")
-        shard = zlib.crc32(dedup_key.encode()) % counter_shards
-        await redis.hincrby(result_counter_key(question_id, shard), option_key, 1)
     except AppError:
         raise
     except RedisError as exc:
-        with suppress(RedisError):
-            await redis.delete(redis_dedup_key)
         raise AppError(503, "unavailable", "Сервис голосования временно недоступен") from exc
 
     event = VoteEvent(

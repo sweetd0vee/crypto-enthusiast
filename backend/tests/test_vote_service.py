@@ -3,12 +3,19 @@ from datetime import UTC, datetime, timedelta
 
 import fakeredis.aioredis
 import pytest
+from redis.exceptions import ResponseError
 
 from app.api.errors import AppError
 from app.question.models import OptionOutput, QuestionOutput
+from app.store.keys import result_counter_key, vote_dedup_key
 from app.vote.journal import VoteJournal
 from app.vote.models import VoteEvent
-from app.vote.service import accept_vote, dedup_hash, get_public_question
+from app.vote.service import (
+    _reserve_and_increment,
+    accept_vote,
+    dedup_hash,
+    get_public_question,
+)
 
 
 class MemoryJournal:
@@ -114,6 +121,24 @@ async def test_parallel_votes_from_same_viewer_count_once(monkeypatch) -> None:
     assert sorted(outcomes) == ["accepted", "already_voted"]
     assert await redis.hget("results:1:0", "a") == "1"
     assert len(journal.events) == 1
+
+
+async def test_atomic_vote_does_not_reserve_viewer_when_counter_has_wrong_type() -> None:
+    redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    counter_key = result_counter_key(1, 0)
+    dedup_key = vote_dedup_key(1, "viewer")
+    await redis.set(counter_key, "not-a-hash")
+
+    with pytest.raises(ResponseError):
+        await _reserve_and_increment(
+            redis,
+            dedup_key=dedup_key,
+            counter_key=counter_key,
+            ttl=60,
+            option_key="a",
+        )
+
+    assert await redis.exists(dedup_key) == 0
 
 
 async def test_two_viewers_on_same_ip_are_both_counted(monkeypatch) -> None:

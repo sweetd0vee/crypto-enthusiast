@@ -177,7 +177,11 @@ async def _has_votes(
     if in_database:
         return True
     keys = result_counter_keys(question_id, counter_shards)
-    return bool(await redis.exists(*keys))
+    pipeline = redis.pipeline(transaction=False)
+    for key in keys:
+        pipeline.hvals(key)
+    shard_values = await pipeline.execute()
+    return any(int(value) > 0 for values in shard_values for value in values)
 
 
 async def update_question(

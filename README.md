@@ -55,8 +55,10 @@
 1. Берёт карточку вопроса из Redis, не из PostgreSQL.
 2. Проверяет, что вопрос опубликован и серверное время внутри окна.
 3. Проверяет, что ключ варианта существует.
-4. Атомарно ставит отметку «этот cookie уже голосовал» (`SET NX`). Не вышло — `409`, счётчик не растёт.
-5. Увеличивает счётчик варианта (`HINCRBY` по шарду) и отвечает зрителю.
+4. Одним Lua-скриптом Redis ставит отметку дедупликации и увеличивает
+   счётчик варианта (`SET NX` + `HINCRBY`). Повтор получает `409`, а падение
+   между двумя отдельными командами исключено.
+5. Отвечает зрителю после успешного атомарного обновления.
 6. Пишет строку в журнал `vote` отдельно от ответа: синхронно на малых объёмах или пачкой при `VOTE_ASYNC=true`.
 
 Итог для админки — сумма шардов Redis, не `COUNT(*)` по миллионам строк. Журнал нужен, чтобы один раз пересчитать цифры, если Redis пуст, и положить снимок в `question_result`. Пока идёт эфир, дашборд этот пересчёт не запускает.
@@ -77,9 +79,9 @@
 | --- | --- | --- |
 | API | Python 3.12, FastAPI, Uvicorn, Pydantic v2 | Тонкий JSON API, async-обработчик, схемы запроса и OpenAPI на `/docs` |
 | Вопросы и журнал | PostgreSQL 16, SQLAlchemy 2 Core, asyncpg, Alembic | Источник правды для админки и пересчёта. Партиции журнала по вопросу |
-| Горячий путь | Redis 7 | `SET NX`, шарды счётчиков, кэш карточки вопроса |
-| Фронт, если останется время | React 18, TypeScript, Vite | Форма по QR и таблица админки. В условии фронт необязателен |
-| Локально | Docker Compose | Postgres, Redis и API одной командой |
+| Горячий путь | Redis 7 | атомарный Lua, шарды счётчиков, кэш карточки вопроса |
+| Фронт | React 18, TypeScript, Vite | форма по QR, админка и live-результаты |
+| Локально | Docker Compose | Postgres, Redis, API и Nginx одной командой |
 
 Django не берём: его админка и сессии расходятся с этим контрактом. Flask не берём: несколько обращений в Redis и ответ без ожидания пачки `INSERT` естественно ложатся на `async def`. Elasticsearch не берём: итог — суммы по 2–10 ключам, не поиск. Отдельный брокер не поднимаем: пачка журнала живёт в `asyncio.Queue` внутри процесса. Kubernetes в сдачу не входит; локально достаточно Compose, в проде тот же процесс без состояния кладётся в несколько реплик.
 
@@ -97,6 +99,12 @@ docker compose -f docker/compose.yml up --build
 Интерфейс доступен на `http://localhost:3000`: форма зрителя — `/q/<id>`,
 админка — `/admin`. Для локального входа используйте токен
 `dev-admin-token`. API также доступен напрямую на `http://localhost:8080`.
+
+Автомобильные демо-опросы и голоса добавляются idempotent-скриптом:
+
+```bash
+python3 backend/scripts/seed_demo.py
+```
 
 Для разработки frontend с HMR можно отдельно запустить Vite:
 
@@ -258,6 +266,15 @@ python3 -c 'import json,sys; value=json.load(sys.stdin); text=json.dumps(value);
 
 ### Автотесты
 
+Весь проект одной командой: backend-тесты и Ruff, frontend build/lint,
+пересборка Docker, HTTP-приёмка и Playwright в Chromium:
+
+```bash
+make verify
+```
+
+Отдельный запуск backend:
+
 ```bash
 cd backend
 python3.12 -m venv .venv
@@ -265,6 +282,15 @@ python3.12 -m venv .venv
 .venv/bin/pytest
 .venv/bin/ruff check .
 ```
+
+Полный HTTP-сценарий против запущенного Docker-контура:
+
+```bash
+RUN_INTEGRATION=1 .venv/bin/pytest tests/test_acceptance_http.py -v
+```
+
+CI в `.github/workflows/ci.yml` отдельно проверяет backend, frontend,
+HTTP-интеграцию и браузерный сценарий на чистых Docker-томах.
 
 ### Локальный нагрузочный прогон
 
@@ -292,18 +318,14 @@ API и Nginx с frontend. Nginx проксирует API-маршруты вну
 поэтому cookie `vid` остаётся same-site. Для локальной разработки остаётся
 Vite-прокси на `localhost:8080`.
 
-Порядок сборки по шагам: [`docs/07-short-plan.md`](docs/07-short-plan.md), бэкенд — [`docs/03-backend-plan.md`](docs/03-backend-plan.md), фронт — [`docs/04-frontend-plan.md`](docs/04-frontend-plan.md).
-
 ## Документы
 
 | Файл | О чём |
 | --- | --- |
-| [`docs/01-specification.md`](docs/01-specification.md) | ТЗ, скоуп, критерии приёмки |
-| [`docs/02-architecture.md`](docs/02-architecture.md) | Горячий путь, модель данных, дедуп, счётчики |
-| [`docs/03-backend-plan.md`](docs/03-backend-plan.md) | Порядок реализации API |
-| [`docs/04-frontend-plan.md`](docs/04-frontend-plan.md) | Экраны зрителя и админки |
+| [`docs/01-specification.md`](docs/01-specification.md) | Актуальные требования и инварианты |
+| [`docs/02-architecture.md`](docs/02-architecture.md) | Текущая архитектура и логика hot path |
 | [`docs/05-api.md`](docs/05-api.md) | Контракт и коды ошибок |
-| [`docs/06-stack.md`](docs/06-stack.md) | Библиотеки и от чего отказались |
-| [`docs/07-short-plan.md`](docs/07-short-plan.md) | Короткий план работ |
+| [`docs/06-stack.md`](docs/06-stack.md) | Текущий стек, запуск и проверки |
+| [`docs/08-production-roadmap.md`](docs/08-production-roadmap.md) | Только ещё не реализованные production-шаги |
 
 Спецификация собрана вместе с ИИ и лежит в репозитории открыто: скрывать эти документы не нужно.
