@@ -2,6 +2,7 @@ name: tv-poll
 
 services:
   postgres:
+    container_name: tv-poll-postgres
     image: postgres:16
     pull_policy: missing
     environment:
@@ -19,6 +20,7 @@ services:
       retries: 20
 
   redis:
+    container_name: tv-poll-redis
     image: redis:7
     pull_policy: missing
     ports:
@@ -30,6 +32,7 @@ services:
       retries: 20
 
   api:
+    container_name: tv-poll-api
     build: .
     ports:
       - "8080:8080"

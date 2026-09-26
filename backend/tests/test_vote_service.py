@@ -5,8 +5,10 @@ import fakeredis.aioredis
 import pytest
 
 from app.api.errors import AppError
-from app.question.service import OptionOutput, QuestionOutput
-from app.vote.service import VoteEvent, VoteJournal, accept_vote, get_public_question
+from app.question.models import OptionOutput, QuestionOutput
+from app.vote.journal import VoteJournal
+from app.vote.models import VoteEvent
+from app.vote.service import accept_vote, dedup_hash, get_public_question
 
 
 class MemoryJournal:
@@ -72,8 +74,6 @@ async def test_public_question_rejects_viewer_who_already_voted(monkeypatch) -> 
     monkeypatch.setattr("app.vote.service._load_question", load_question)
     first = await get_public_question(object(), redis, 1, "viewer", now=now)
     assert first.name == "A or B?"
-
-    from app.vote.service import dedup_hash
 
     await redis.set(f"vote:1:{dedup_hash(1, 'viewer')}", "1")
     with pytest.raises(AppError) as exc:

@@ -1,107 +1,34 @@
-"""CRUD вопроса, эффективный статус и кэш карточки в Redis."""
+"""Правила CRUD вопросов поверх PostgreSQL и Redis-кэша."""
 
-import json
-from datetime import UTC, datetime, timedelta
-from typing import Literal
+from collections.abc import Mapping
+from datetime import UTC, datetime
+from typing import Any, cast
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from redis.asyncio import Redis
 from sqlalchemy import delete, exists, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from app.api.errors import AppError
+from app.question.cache import cache_question, evict_question
+from app.question.models import (
+    OptionInput,
+    OptionOutput,
+    QuestionCreate,
+    QuestionOutput,
+    QuestionStatus,
+    QuestionUpdate,
+    effective_status,
+)
+from app.store.keys import result_counter_keys
 from app.store.schema import question, question_option, vote
 
-QuestionStatus = Literal["draft", "published", "cancelled"]
-EffectiveStatus = Literal["draft", "cancelled", "scheduled", "live", "closed"]
 
-
-class OptionInput(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
-
-    key: str = Field(min_length=1, max_length=64)
-    label: str = Field(min_length=1)
-
-
-class OptionOutput(OptionInput):
-    position: int
-
-
-class QuestionInput(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
-
-    name: str = Field(min_length=1)
-    show_time: datetime | None = None
-    duration_seconds: int = Field(default=60, ge=10, le=3600)
-    options: list[OptionInput] = Field(min_length=2, max_length=10)
-
-    @field_validator("show_time")
-    @classmethod
-    def show_time_must_have_timezone(cls, value: datetime | None) -> datetime | None:
-        if value is not None and value.tzinfo is None:
-            raise ValueError("show_time must include a timezone")
-        return value.astimezone(UTC) if value is not None else None
-
-    @field_validator("options")
-    @classmethod
-    def option_keys_must_be_unique(cls, value: list[OptionInput]) -> list[OptionInput]:
-        keys = [option.key for option in value]
-        if len(keys) != len(set(keys)):
-            raise ValueError("option keys must be unique")
-        return value
-
-
-class QuestionCreate(QuestionInput):
-    status: Literal["draft", "published"] = "draft"
-
-    @model_validator(mode="after")
-    def published_question_needs_show_time(self) -> "QuestionCreate":
-        if self.status == "published" and self.show_time is None:
-            raise ValueError("show_time is required for a published question")
-        return self
-
-
-class QuestionUpdate(QuestionInput):
-    status: QuestionStatus
-
-    @model_validator(mode="after")
-    def published_question_needs_show_time(self) -> "QuestionUpdate":
-        if self.status == "published" and self.show_time is None:
-            raise ValueError("show_time is required for a published question")
-        return self
-
-
-class QuestionOutput(BaseModel):
-    id: int
-    name: str
-    status: QuestionStatus
-    effective_status: EffectiveStatus
-    show_time: datetime | None
-    duration_seconds: int
-    options: list[OptionOutput]
-
-
-def effective_status(
-    status: QuestionStatus,
-    show_time: datetime | None,
-    duration_seconds: int,
-    now: datetime | None = None,
-) -> EffectiveStatus:
-    if status != "published":
-        return status
-    if show_time is None:
-        raise ValueError("published question has no show_time")
-
-    current_time = now or datetime.now(UTC)
-    if current_time < show_time:
-        return "scheduled"
-    if current_time < show_time + timedelta(seconds=duration_seconds):
-        return "live"
-    return "closed"
-
-
-def _to_output(row: dict, options: list[dict], now: datetime) -> QuestionOutput:
-    status: QuestionStatus = row["status"]
+def _to_output(
+    row: Mapping[str, Any],
+    options: list[Mapping[str, Any]],
+    now: datetime,
+) -> QuestionOutput:
+    status = cast(QuestionStatus, row["status"])
     return QuestionOutput(
         id=row["id"],
         name=row["name"],
@@ -144,8 +71,8 @@ async def _load_one(
             .where(question_option.c.question_id == question_id)
             .order_by(question_option.c.position)
         )
-    ).mappings()
-    return _to_output(dict(row), [dict(item) for item in option_rows], datetime.now(UTC))
+    ).mappings().all()
+    return _to_output(row, option_rows, datetime.now(UTC))
 
 
 async def get_question(engine: AsyncEngine, question_id: int) -> QuestionOutput:
@@ -158,14 +85,32 @@ async def get_question(engine: AsyncEngine, question_id: int) -> QuestionOutput:
 
 async def list_questions(engine: AsyncEngine) -> list[QuestionOutput]:
     async with engine.connect() as connection:
-        ids = (
-            await connection.execute(select(question.c.id).order_by(question.c.id))
-        ).scalars()
-        return [
-            loaded
-            for question_id in ids
-            if (loaded := await _load_one(connection, question_id)) is not None
-        ]
+        question_rows = (
+            await connection.execute(select(question).order_by(question.c.id))
+        ).mappings().all()
+        if not question_rows:
+            return []
+
+        question_ids = [row["id"] for row in question_rows]
+        option_rows = (
+            await connection.execute(
+                select(question_option)
+                .where(question_option.c.question_id.in_(question_ids))
+                .order_by(question_option.c.question_id, question_option.c.position)
+            )
+        ).mappings().all()
+
+    options_by_question: dict[int, list[Mapping[str, Any]]] = {
+        question_id: [] for question_id in question_ids
+    }
+    for option in option_rows:
+        options_by_question[option["question_id"]].append(option)
+
+    now = datetime.now(UTC)
+    return [
+        _to_output(row, options_by_question[row["id"]], now)
+        for row in question_rows
+    ]
 
 
 async def _write_options(
@@ -184,13 +129,6 @@ async def _write_options(
             }
             for position, option in enumerate(options)
         ],
-    )
-
-
-async def _cache(redis: Redis, value: QuestionOutput) -> None:
-    await redis.set(
-        f"question:{value.id}",
-        json.dumps(value.model_dump(mode="json"), ensure_ascii=False),
     )
 
 
@@ -215,8 +153,9 @@ async def create_question(
         await _write_options(connection, question_id, data.options)
         created = await _load_one(connection, question_id)
 
-    assert created is not None
-    await _cache(redis, created)
+    if created is None:
+        raise RuntimeError("created question could not be loaded")
+    await cache_question(redis, created)
     return created
 
 
@@ -237,7 +176,7 @@ async def _has_votes(
     )
     if in_database:
         return True
-    keys = [f"results:{question_id}:{shard}" for shard in range(counter_shards)]
+    keys = result_counter_keys(question_id, counter_shards)
     return bool(await redis.exists(*keys))
 
 
@@ -284,8 +223,9 @@ async def update_question(
             await _write_options(connection, question_id, data.options)
         updated = await _load_one(connection, question_id)
 
-    assert updated is not None
-    await _cache(redis, updated)
+    if updated is None:
+        raise RuntimeError("updated question could not be loaded")
+    await cache_question(redis, updated)
     return updated
 
 
@@ -312,4 +252,4 @@ async def delete_question(
             )
         await connection.execute(delete(question).where(question.c.id == question_id))
 
-    await redis.delete(f"question:{question_id}")
+    await evict_question(redis, question_id)

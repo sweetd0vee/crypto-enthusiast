@@ -1,138 +1,27 @@
 """Чтение публичной формы и горячий путь приёма голоса."""
 
-import asyncio
 import hashlib
-import json
 import logging
 import math
 import zlib
 from contextlib import suppress
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.api.errors import AppError
-from app.question.service import QuestionOutput, get_question
-from app.store.schema import vote
+from app.question.cache import cache_question, get_cached_question
+from app.question.models import QuestionOutput
+from app.question.service import get_question
+from app.store.keys import result_counter_key, vote_dedup_key
+from app.vote.journal import VoteJournal
+from app.vote.models import PublicQuestion, VoteEvent
 
-JOURNAL_BATCH_SIZE = 1000
-JOURNAL_FLUSH_INTERVAL_SECONDS = 0.05
-JOURNAL_QUEUE_SIZE = 10_000
 DEDUP_TTL_MARGIN_SECONDS = 86_400
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True, slots=True)
-class VoteEvent:
-    question_id: int
-    option_key: str
-    dedup_key: str
-    ip_hash: str
-    voted_at: datetime
-
-    def as_row(self) -> dict[str, object]:
-        return {
-            "question_id": self.question_id,
-            "option_key": self.option_key,
-            "dedup_key": self.dedup_key,
-            "ip_hash": self.ip_hash,
-            "voted_at": self.voted_at,
-        }
-
-
-@dataclass(frozen=True, slots=True)
-class PublicQuestion:
-    id: int
-    name: str
-    closes_at: datetime
-    options: list[dict[str, str]]
-
-
-class VoteJournal:
-    def __init__(self, engine: AsyncEngine) -> None:
-        self._engine = engine
-        self._queue: asyncio.Queue[VoteEvent] = asyncio.Queue(JOURNAL_QUEUE_SIZE)
-        self._worker: asyncio.Task[None] | None = None
-
-    def start(self) -> None:
-        if self._worker is None:
-            self._worker = asyncio.create_task(self._run(), name="vote-journal")
-
-    async def close(self) -> None:
-        if self._worker is None:
-            return
-        await self._queue.join()
-        self._worker.cancel()
-        with suppress(asyncio.CancelledError):
-            await self._worker
-        self._worker = None
-
-    def enqueue(self, event: VoteEvent) -> None:
-        try:
-            self._queue.put_nowait(event)
-        except asyncio.QueueFull:
-            logger.error("vote journal queue is full; event dropped")
-
-    async def write(self, event: VoteEvent) -> None:
-        await self._write_batch([event])
-
-    async def _write_batch(self, events: list[VoteEvent]) -> None:
-        statement = insert(vote).values([event.as_row() for event in events])
-        statement = statement.on_conflict_do_nothing(
-            index_elements=[vote.c.question_id, vote.c.dedup_key]
-        )
-        async with self._engine.begin() as connection:
-            await connection.execute(statement)
-
-    async def _run(self) -> None:
-        while True:
-            first = await self._queue.get()
-            batch = [first]
-            deadline = asyncio.get_running_loop().time() + JOURNAL_FLUSH_INTERVAL_SECONDS
-            try:
-                while len(batch) < JOURNAL_BATCH_SIZE:
-                    timeout = deadline - asyncio.get_running_loop().time()
-                    if timeout <= 0:
-                        break
-                    try:
-                        batch.append(await asyncio.wait_for(self._queue.get(), timeout))
-                    except TimeoutError:
-                        break
-                await self._write_batch(batch)
-            except Exception:
-                logger.exception("failed to write vote journal batch")
-            finally:
-                for _ in batch:
-                    self._queue.task_done()
-
-
-_journal: VoteJournal | None = None
-
-
-def init_journal(engine: AsyncEngine, *, asynchronous: bool) -> VoteJournal:
-    global _journal
-    _journal = VoteJournal(engine)
-    if asynchronous:
-        _journal.start()
-    return _journal
-
-
-def get_journal() -> VoteJournal:
-    if _journal is None:
-        raise RuntimeError("vote journal is not initialized")
-    return _journal
-
-
-async def close_journal() -> None:
-    global _journal
-    if _journal is not None:
-        await _journal.close()
-        _journal = None
 
 
 def dedup_hash(question_id: int, viewer_id: str) -> str:
@@ -148,20 +37,13 @@ async def _load_question(
     redis: Redis,
     question_id: int,
 ) -> QuestionOutput:
-    cache_key = f"question:{question_id}"
     try:
-        cached = await redis.get(cache_key)
+        cached = await get_cached_question(redis, question_id)
         if cached is not None:
-            try:
-                return QuestionOutput.model_validate_json(cached)
-            except ValueError:
-                await redis.delete(cache_key)
+            return cached
 
         loaded = await get_question(engine, question_id)
-        await redis.set(
-            cache_key,
-            json.dumps(loaded.model_dump(mode="json"), ensure_ascii=False),
-        )
+        await cache_question(redis, loaded)
         return loaded
     except AppError:
         raise
@@ -194,8 +76,9 @@ async def get_public_question(
     current_time = now or datetime.now(UTC)
     question = await _load_question(engine, redis, question_id)
     closes_at = _check_window(question, current_time)
+    dedup_key = vote_dedup_key(question_id, dedup_hash(question_id, viewer_id))
     try:
-        if await redis.exists(f"vote:{question_id}:{dedup_hash(question_id, viewer_id)}"):
+        if await redis.exists(dedup_key):
             raise AppError(409, "already_voted", "Вы уже проголосовали")
     except RedisError as exc:
         raise AppError(503, "unavailable", "Сервис голосования временно недоступен") from exc
@@ -229,14 +112,14 @@ async def accept_vote(
         raise AppError(422, "invalid_option", "Такого варианта ответа нет")
 
     dedup_key = dedup_hash(question_id, viewer_id)
-    redis_dedup_key = f"vote:{question_id}:{dedup_key}"
+    redis_dedup_key = vote_dedup_key(question_id, dedup_key)
     ttl = math.ceil((closes_at - current_time).total_seconds()) + DEDUP_TTL_MARGIN_SECONDS
     try:
         first_vote = await redis.set(redis_dedup_key, "1", ex=ttl, nx=True)
         if not first_vote:
             raise AppError(409, "already_voted", "Вы уже проголосовали")
         shard = zlib.crc32(dedup_key.encode()) % counter_shards
-        await redis.hincrby(f"results:{question_id}:{shard}", option_key, 1)
+        await redis.hincrby(result_counter_key(question_id, shard), option_key, 1)
     except AppError:
         raise
     except RedisError as exc:

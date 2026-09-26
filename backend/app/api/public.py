@@ -1,29 +1,16 @@
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Cookie, Depends, Request, Response, status
+from fastapi import APIRouter, Cookie, Request, Response, status
 from pydantic import BaseModel, Field
 
-from app.config import Settings, get_settings
-from app.store.db import get_engine
-from app.store.redis import get_redis
-from app.vote.service import accept_vote, get_journal, get_public_question
+from app.api.deps import DatabaseDep, RedisDep, SettingsDep, VoteJournalDep
+from app.vote.models import PublicQuestion
+from app.vote.service import accept_vote, get_public_question
 
 router = APIRouter(tags=["public"])
 
 VIEWER_COOKIE_MAX_AGE = 86_400
-
-
-class PublicOption(BaseModel):
-    key: str
-    label: str
-
-
-class PublicQuestionResponse(BaseModel):
-    id: int
-    name: str
-    closes_at: str
-    options: list[PublicOption]
 
 
 class VoteRequest(BaseModel):
@@ -31,7 +18,7 @@ class VoteRequest(BaseModel):
 
 
 class VoteResponse(BaseModel):
-    status: str
+    status: Literal["accepted"]
     question_id: int
     option: str
 
@@ -56,27 +43,24 @@ def _set_viewer_cookie(response: Response, viewer_id: str) -> None:
     )
 
 
-@router.get("/questionnaire/{question_id}", response_model=PublicQuestionResponse)
+@router.get("/questionnaire/{question_id}", response_model=PublicQuestion)
 async def questionnaire(
     question_id: int,
     response: Response,
+    database: DatabaseDep,
+    redis: RedisDep,
     vid: Annotated[str | None, Cookie()] = None,
-) -> PublicQuestionResponse:
+) -> PublicQuestion:
     viewer_id, is_new = _viewer_id(vid)
     result = await get_public_question(
-        get_engine(),
-        get_redis(),
+        database,
+        redis,
         question_id,
         viewer_id,
     )
     if is_new:
         _set_viewer_cookie(response, viewer_id)
-    return PublicQuestionResponse(
-        id=result.id,
-        name=result.name,
-        closes_at=result.closes_at.isoformat().replace("+00:00", "Z"),
-        options=[PublicOption(**option) for option in result.options],
-    )
+    return result
 
 
 @router.post(
@@ -89,14 +73,17 @@ async def vote(
     data: VoteRequest,
     request: Request,
     response: Response,
-    settings: Annotated[Settings, Depends(get_settings)],
+    database: DatabaseDep,
+    redis: RedisDep,
+    journal: VoteJournalDep,
+    settings: SettingsDep,
     vid: Annotated[str | None, Cookie()] = None,
 ) -> VoteResponse:
     viewer_id, is_new = _viewer_id(vid)
     await accept_vote(
-        get_engine(),
-        get_redis(),
-        get_journal(),
+        database,
+        redis,
+        journal,
         question_id=question_id,
         option_key=data.option,
         viewer_id=viewer_id,

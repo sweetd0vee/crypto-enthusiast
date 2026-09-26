@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
-from app.question.service import QuestionCreate, effective_status
+from app.question.models import QuestionCreate, effective_status
 
 
 def test_effective_status_at_window_boundaries() -> None:

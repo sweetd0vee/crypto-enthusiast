@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 import fakeredis.aioredis
 
-from app.question.service import OptionOutput, QuestionOutput
+from app.question.models import OptionOutput, QuestionOutput
 from app.result.service import _read_counters, _response
 
 

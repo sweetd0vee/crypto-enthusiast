@@ -2,33 +2,17 @@
 
 from datetime import UTC, datetime
 
-from pydantic import BaseModel
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 from sqlalchemy import delete, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.api.errors import AppError
-from app.question.service import QuestionOutput, get_question
+from app.question.models import QuestionOutput
+from app.question.service import get_question
+from app.result.models import OptionCount, QuestionResult
+from app.store.keys import result_counter_keys
 from app.store.schema import question_result, vote
-
-
-class OptionCount(BaseModel):
-    key: str
-    label: str
-    count: int
-
-
-class QuestionResult(BaseModel):
-    question_id: int
-    name: str
-    effective_status: str
-    total: int
-    counts: list[OptionCount]
-
-
-def _counter_keys(question_id: int, counter_shards: int) -> list[str]:
-    return [f"results:{question_id}:{shard}" for shard in range(counter_shards)]
 
 
 async def _read_counters(
@@ -36,7 +20,7 @@ async def _read_counters(
     question_id: int,
     counter_shards: int,
 ) -> tuple[bool, dict[str, int]]:
-    keys = _counter_keys(question_id, counter_shards)
+    keys = result_counter_keys(question_id, counter_shards)
     try:
         pipeline = redis.pipeline(transaction=False)
         for key in keys:
@@ -106,7 +90,7 @@ async def rebuild_results(
             ],
         )
 
-    keys = _counter_keys(question_id, counter_shards)
+    keys = result_counter_keys(question_id, counter_shards)
     try:
         pipeline = redis.pipeline(transaction=True)
         pipeline.delete(*keys)
