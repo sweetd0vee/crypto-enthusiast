@@ -3,6 +3,7 @@ name: tv-poll
 services:
   postgres:
     image: postgres:16
+    pull_policy: missing
     environment:
       POSTGRES_USER: poll
       POSTGRES_PASSWORD: poll
@@ -19,6 +20,7 @@ services:
 
   redis:
     image: redis:7
+    pull_policy: missing
     ports:
       - "6379:6379"
     healthcheck:
