@@ -101,7 +101,7 @@ counter = results:{question_id}:{shard}
 
 Внутрипроцессная очередь не является durable и может потерять ещё не
 записанный batch при аварии. Замена на Redis Streams и reconciliation —
-первый пункт [production-roadmap](08-production-roadmap.md).
+первый пункт [production-roadmap](05-production-roadmap.md).
 
 ## Дедупликация и приватность
 
@@ -158,4 +158,4 @@ live-окна автоматический тяжёлый `GROUP BY` не зап
 
 Публичные API-реплики, административные реплики, Redis Cluster и consumer
 журнала масштабируются независимо. Детали ещё не реализованного
-production-контура находятся в [roadmap](08-production-roadmap.md).
+production-контура находятся в [roadmap](05-production-roadmap.md).

@@ -93,7 +93,7 @@
 - административный CRUD не используется на горячем пути каждого голоса.
 
 Текущие ограничения и целевое масштабирование описаны в
-[архитектуре](02-architecture.md), HTTP-контракт — в [API](05-api.md).
+[архитектуре](02-architecture.md), HTTP-контракт — в [API](03-api.md).
 
 ## Критерии приёмки
 
@@ -118,4 +118,4 @@
 - production IAM, multi-region и Kubernetes-манифесты.
 
 Оставшиеся production-задачи перечислены в
-[roadmap](08-production-roadmap.md).
+[roadmap](05-production-roadmap.md).

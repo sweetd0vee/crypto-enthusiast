@@ -155,9 +155,6 @@ export function AdminPage() {
         <section className="panel table-panel">
           {!loading && questions.length > 0 && (
             <div className="table-summary">
-              <span>
-                Показано {filteredQuestions.length} из {questions.length}
-              </span>
               <button
                 className="refresh-button"
                 disabled={loading}

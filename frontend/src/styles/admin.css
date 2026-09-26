@@ -44,6 +44,38 @@
   color: var(--muted);
 }
 
+.logout-button {
+  width: 40px;
+  height: 40px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: #fff;
+  color: #626a7e;
+  transition:
+    color 0.16s ease,
+    border-color 0.16s ease,
+    background 0.16s ease;
+}
+
+.logout-button:hover {
+  border-color: #c5cada;
+  background: #f7f8fb;
+  color: var(--primary);
+}
+
+.logout-button svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
 .admin-main {
   width: calc(100% - clamp(32px, 6vw, 112px));
   max-width: 1800px;
@@ -188,7 +220,7 @@
 .table-summary {
   min-height: 54px;
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   gap: 16px;
   padding: 8px 20px;

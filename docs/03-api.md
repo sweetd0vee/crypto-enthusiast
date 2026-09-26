@@ -36,7 +36,8 @@
 
 Если cookie `vid` не было, ответ содержит `Set-Cookie`.
 
-Ошибки: `404 not_found`, `403 window_not_started`, `403 not_published`, `410 window_closed`, `409 already_voted`.
+Ошибки: `404 not_found`, `403 window_not_started`, `403 not_published`,
+`410 window_closed`, `409 already_voted`.
 
 ### Проголосовать
 
@@ -52,7 +53,8 @@
 {"status": "accepted", "question_id": 1, "option": "a"}
 ```
 
-Ошибки те же, плюс `422 invalid_option` и `503 unavailable`, если Redis не отвечает.
+Ошибки те же, плюс `422 invalid_option` и `503 unavailable`, если Redis не
+отвечает.
 
 ```bash
 curl -sS -c /tmp/vid.txt -b /tmp/vid.txt \
@@ -106,9 +108,9 @@ curl -sS -c /tmp/vid.txt -b /tmp/vid.txt \
 }
 ```
 
-Для локальной проверки `show_time` ставят на несколько секунд вперёд или `duration_seconds` увеличивают до 300.
-
-A/B — тот же метод, в `options` два элемента.
+Для локальной проверки `show_time` ставят на несколько секунд вперёд или
+`duration_seconds` увеличивают до 300. A/B — тот же метод с двумя элементами
+в `options`.
 
 ### Список
 
@@ -120,16 +122,20 @@ A/B — тот же метод, в `options` два элемента.
 
 ### Изменить
 
-`PUT /questions/{id}` — то же тело, что у создания. Ответ `200` — обновлённая карточка.
+`PUT /questions/{id}` — то же тело, что у создания. Ответ `200` — обновлённая
+карточка.
 
-Если по вопросу уже есть голоса и в теле другой набор `options` → `409 options_locked`.
+Если по вопросу уже есть голоса и в теле другой набор `options` →
+`409 options_locked`.
 
 ### Удалить
 
 `DELETE /questions/{id}`.
 
 - черновик без голосов → `204`;
-- есть голоса или статус не `draft` → `409 delete_forbidden`. Такой вопрос отменяют через `PUT` со `"status": "cancelled"`.
+- есть голоса или статус не `draft` → `409 delete_forbidden`.
+
+Опубликованный вопрос отменяют через `PUT` со `"status": "cancelled"`.
 
 ## Админ: результат
 
@@ -152,9 +158,10 @@ A/B — тот же метод, в `options` два элемента.
 
 `total` равен сумме `count`. Вариант с нулём голосов всё равно присутствует.
 
-`POST /questions/{id}/results/rebuild` → `200` и тот же объект, цифры заново собраны из таблицы `vote`.
+`POST /questions/{id}/results/rebuild` → `200` и тот же объект, цифры заново
+собраны из таблицы `vote`.
 
-## Коды, сводка
+## Коды ошибок
 
 | Код | `error` | Когда |
 | --- | --- | --- |

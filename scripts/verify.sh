@@ -4,7 +4,15 @@ set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON="$ROOT_DIR/backend/.venv/bin/python"
-COMPOSE=(docker compose -f "$ROOT_DIR/docker/compose.yml")
+COMPOSE=(
+  docker compose
+  -f "$ROOT_DIR/docker/compose.yml"
+  -f "$ROOT_DIR/docker/compose.verify.yml"
+)
+
+cleanup() {
+  "${COMPOSE[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
+}
 
 if [[ ! -x "$PYTHON" ]]; then
   python3 -m venv "$ROOT_DIR/backend/.venv"
@@ -31,23 +39,27 @@ fi
 )
 
 "${COMPOSE[@]}" config --quiet
+cleanup
+trap cleanup EXIT
 "${COMPOSE[@]}" up --build -d
 
 for _ in {1..30}; do
-  if curl --fail --silent http://localhost:3000/health >/dev/null; then
+  if curl --fail --silent http://localhost:13000/health >/dev/null; then
     break
   fi
   sleep 2
 done
-curl --fail --silent http://localhost:3000/health >/dev/null
+curl --fail --silent http://localhost:13000/health >/dev/null
 
 (
   cd "$ROOT_DIR/backend"
-  RUN_INTEGRATION=1 "$PYTHON" -m pytest tests/test_acceptance_http.py
+  API_URL=http://localhost:18080 \
+    RUN_INTEGRATION=1 \
+    "$PYTHON" -m pytest tests/test_acceptance_http.py
 )
 
 (
   cd "$ROOT_DIR/frontend"
   npx playwright install chromium
-  npm run test:e2e
+  E2E_BASE_URL=http://localhost:13000 npm run test:e2e
 )

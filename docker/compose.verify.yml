@@ -1,0 +1,26 @@
+name: tv-poll-verify
+
+services:
+  postgres:
+    container_name: !reset null
+    ports: !override
+      - "15432:5432"
+    restart: "no"
+
+  redis:
+    container_name: !reset null
+    ports: !override
+      - "16379:6379"
+    restart: "no"
+
+  api:
+    container_name: !reset null
+    ports: !override
+      - "18080:8080"
+    restart: "no"
+
+  frontend:
+    container_name: !reset null
+    ports: !override
+      - "13000:80"
+    restart: "no"

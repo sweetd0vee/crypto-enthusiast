@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { LogoutIcon } from './Icons'
 
 export function AdminLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
@@ -16,8 +17,14 @@ export function AdminLayout({ children }: { children: ReactNode }) {
           <span className="brand-mark">Q</span>
           TV Poll
         </Link>
-        <button className="text-button" onClick={logout} type="button">
-          Выйти
+        <button
+          aria-label="Выйти"
+          className="logout-button"
+          onClick={logout}
+          title="Выйти"
+          type="button"
+        >
+          <LogoutIcon />
         </button>
       </header>
       {children}

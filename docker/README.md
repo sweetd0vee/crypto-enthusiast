@@ -28,3 +28,7 @@ docker compose -f docker/compose.yml down
 ```bash
 docker compose -f docker/compose.yml down -v
 ```
+
+`make verify` использует дополнительный `compose.verify.yml`, отдельные порты
+и временные тома. После проверки этот контур удаляется автоматически и не
+добавляет `E2E`/`Integration` записи в локальную админку.

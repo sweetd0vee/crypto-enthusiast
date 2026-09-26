@@ -37,3 +37,12 @@ export function TrashIcon({ className }: IconProps) {
     </svg>
   )
 }
+
+export function LogoutIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} viewBox="0 0 24 24">
+      <path d="M10 4H5v16h5" />
+      <path d="M8 12h11m-4-4 4 4-4 4" />
+    </svg>
+  )
+}
