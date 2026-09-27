@@ -336,5 +336,6 @@ Vite-прокси на `localhost:8080`.
 | [`docs/06-code-reference.md`](docs/06-code-reference.md) | Модули, функции и сквозная логика кода |
 | [`docs/07-walkthrough.md`](docs/07-walkthrough.md) | Разбор задачи и кода для первого чтения |
 | [`docs/08-load.md`](docs/08-load.md) | Как текущий код проводит пик из условия |
+| [`docs/09-project-presentation.pptx`](docs/09-project-presentation.pptx) | Презентация проекта на 10 слайдов; [Markdown-исходник](docs/09-project-presentation.md) |
 
 Спецификация собрана вместе с ИИ и лежит в репозитории открыто: скрывать эти документы не нужно.

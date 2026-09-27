@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "7c4e9a12-6b3d-4f85-9c20-1a8e5d0f6b42",
     "name": "Минутный ТВ-опрос",
-    "description": "Локальная проверка API минутного ТВ-опроса.\n\nПорядок папок фиксирован: Collection Runner запускает их сверху вниз. Папки 04 и 06 связаны общими голосами, папка 05 читает отменённый вопрос из папки 03.\n\nПеременные `baseUrl` и `adminToken` можно переопределить окружением. id вопросов и cookie `vid` коллекция записывает сама.\n\nАдминские запросы наследуют Bearer. Зрительские запросы идут без токена.",
+    "description": "Локальная проверка API минутного ТВ-опроса и автомобильного демо-каталога из `backend/scripts/seed_demo.py`.\n\nПеред запуском всей коллекции выполните seed-скрипт. Порядок папок фиксирован: Collection Runner запускает их сверху вниз. Папка 03 находит демо-опросы по стабильным именам и сохраняет их id; папки 05 и 07 связаны общими голосами, папка 06 читает отменённый вопрос из папки 04.\n\nПеременные `baseUrl` и `adminToken` можно переопределить окружением. id вопросов и cookie `vid` коллекция записывает сама. Технические вопросы, создаваемые тестами, имеют префикс `Postman ·` и не смешиваются с демо-каталогом.\n\nАдминские запросы наследуют Bearer. Зрительские запросы идут без токена.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -74,6 +74,26 @@
     },
     {
       "key": "viewerFresh",
+      "value": ""
+    },
+    {
+      "key": "demoLiveId",
+      "value": ""
+    },
+    {
+      "key": "demoScheduledId",
+      "value": ""
+    },
+    {
+      "key": "demoClosedId",
+      "value": ""
+    },
+    {
+      "key": "demoDraftId",
+      "value": ""
+    },
+    {
+      "key": "demoCancelledId",
       "value": ""
     }
   ],
@@ -191,7 +211,299 @@
       ]
     },
     {
-      "name": "03 Admin — questions",
+      "name": "03 Demo — automotive catalog",
+      "description": "Read-only smoke-проверка 56 автомобильных демо-опросов. Сначала запустите `python3 backend/scripts/seed_demo.py`. ID находятся по именам, поэтому коллекция не зависит от sequence PostgreSQL.",
+      "item": [
+        {
+          "name": "GET /questions — find demo catalog",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/questions",
+            "description": "Проверяет объём и разнообразие каталога, затем сохраняет ID пяти опорных опросов."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const questions = pm.response.json();",
+                  "pm.test('at least 50 automotive demo polls', function () {",
+                  "    pm.expect(questions.length).to.be.at.least(50);",
+                  "});",
+                  "const statuses = questions.reduce(function (acc, question) {",
+                  "    acc[question.effective_status] = (acc[question.effective_status] || 0) + 1;",
+                  "    return acc;",
+                  "}, {});",
+                  "pm.test('all effective statuses are represented', function () {",
+                  "    ['draft', 'scheduled', 'live', 'closed', 'cancelled'].forEach(function (status) {",
+                  "        pm.expect(statuses[status] || 0, status).to.be.above(0);",
+                  "    });",
+                  "});",
+                  "pm.test('different option counts are represented', function () {",
+                  "    const sizes = questions.map(function (question) { return question.options.length; });",
+                  "    [2, 3, 4, 5, 6, 7, 8, 10].forEach(function (size) {",
+                  "        pm.expect(sizes, size + ' options').to.include(size);",
+                  "    });",
+                  "});",
+                  "const fixtures = [",
+                  "    ['demoLiveId', 'Какой тип кузова практичнее для города?', 'live', 5],",
+                  "    ['demoScheduledId', 'Какой электромобиль поставили бы в гараж?', 'scheduled', 5],",
+                  "    ['demoClosedId', 'Откуда должна быть машина мечты?', 'closed', 10],",
+                  "    ['demoDraftId', 'Панорамная крыша — берёте?', 'draft', 3],",
+                  "    ['demoCancelledId', 'Бензин или дизель для большого универсала?', 'cancelled', 2]",
+                  "];",
+                  "fixtures.forEach(function (fixture) {",
+                  "    const found = questions.find(function (question) { return question.name === fixture[1]; });",
+                  "    pm.test('demo exists: ' + fixture[1], function () {",
+                  "        pm.expect(found, fixture[1]).to.not.equal(undefined);",
+                  "        pm.expect(found.effective_status).to.eql(fixture[2]);",
+                  "        pm.expect(found.options).to.have.lengthOf(fixture[3]);",
+                  "    });",
+                  "    if (found) pm.collectionVariables.set(fixture[0], String(found.id));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET live demo form",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "vid={{viewerFresh}}"
+              }
+            ],
+            "url": "{{baseUrl}}/questionnaire/{{demoLiveId}}",
+            "description": "Публичная карточка действующего демо-опроса.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('demoLiveId');",
+                  "if (!/^\\d+$/.test(id || '')) throw new Error('Сначала выполните поиск демо-каталога');",
+                  "pm.collectionVariables.set('viewerFresh', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('live automotive form', function () {",
+                  "    pm.expect(body.name).to.eql('Какой тип кузова практичнее для города?');",
+                  "    pm.expect(body.options.map(function (row) { return row.label; })).to.eql(['Седан', 'Кроссовер', 'Хэтчбек', 'Универсал', 'Лифтбек']);",
+                  "    pm.expect(new Date(body.closes_at).getTime()).to.be.above(Date.now());",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "GET closed demo results",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/questions/{{demoClosedId}}/results",
+            "description": "Завершённый опрос с 10 вариантами и заранее подготовленными голосами."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('demoClosedId');",
+                  "if (!/^\\d+$/.test(id || '')) throw new Error('Сначала выполните поиск демо-каталога');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "const expected = {",
+                  "    'Германия': 22, 'Япония': 27, 'Корея': 18, 'Китай': 14, 'Франция': 4,",
+                  "    'США': 6, 'Италия': 5, 'Чехия': 8, 'Швеция': 7, 'Россия': 9",
+                  "};",
+                  "pm.test('prepared closed result', function () {",
+                  "    pm.expect(body.name).to.eql('Откуда должна быть машина мечты?');",
+                  "    pm.expect(body.effective_status).to.eql('closed');",
+                  "    pm.expect(body.total).to.eql(120);",
+                  "    pm.expect(body.counts).to.have.lengthOf(10);",
+                  "    body.counts.forEach(function (row) { pm.expect(row.count).to.eql(expected[row.label]); });",
+                  "});",
+                  "pm.test('total matches sum', function () {",
+                  "    pm.expect(body.counts.reduce(function (sum, row) { return sum + row.count; }, 0)).to.eql(body.total);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET cancelled demo results",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/questions/{{demoCancelledId}}/results",
+            "description": "Отменённый после начала опрос сохраняет уже принятые голоса."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('demoCancelledId');",
+                  "if (!/^\\d+$/.test(id || '')) throw new Error('Сначала выполните поиск демо-каталога');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('cancelled poll retains votes', function () {",
+                  "    pm.expect(body.effective_status).to.eql('cancelled');",
+                  "    pm.expect(body.total).to.eql(65);",
+                  "    pm.expect(body.counts.map(function (row) { return row.count; })).to.eql([46, 19]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET scheduled demo form",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "vid={{viewerFresh}}"
+              }
+            ],
+            "url": "{{baseUrl}}/questionnaire/{{demoScheduledId}}",
+            "description": "Запланированный демо-опрос пока не открывается зрителю.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('demoScheduledId');",
+                  "if (!/^\\d+$/.test(id || '')) throw new Error('Сначала выполните поиск демо-каталога');",
+                  "pm.collectionVariables.set('viewerFresh', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 403', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});",
+                  "pm.test('window has not started', function () {",
+                  "    pm.expect(pm.response.json().error).to.eql('window_not_started');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "GET draft demo form",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "vid={{viewerFresh}}"
+              }
+            ],
+            "url": "{{baseUrl}}/questionnaire/{{demoDraftId}}",
+            "description": "Черновик существует в админке, но не опубликован для зрителя.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('demoDraftId');",
+                  "if (!/^\\d+$/.test(id || '')) throw new Error('Сначала выполните поиск демо-каталога');",
+                  "pm.collectionVariables.set('viewerFresh', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 403', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});",
+                  "pm.test('draft is not published', function () {",
+                  "    pm.expect(pm.response.json().error).to.eql('not_published');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Admin — questions",
       "description": "Создание, чтение, правка и удаление. Успешные запросы наследуют Bearer из коллекции.",
       "item": [
         {
@@ -393,7 +705,7 @@
             "description": "Черновик зрителю не виден. id сохраняется в draftId.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Нужен ли подогрев руля?\",\n  \"status\": \"draft\",\n  \"duration_seconds\": 60,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Да\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"Нет\"\n    }\n  ]\n}",
+              "raw": "{\n  \"name\": \"Postman · Нужен ли подогрев руля?\",\n  \"status\": \"draft\",\n  \"duration_seconds\": 60,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Да\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"Нет\"\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -493,7 +805,7 @@
                   "});",
                   "const body = pm.response.json();",
                   "pm.test('draft card', function () {",
-                  "    pm.expect(body.name).to.eql('Нужен ли подогрев руля?');",
+                  "    pm.expect(body.name).to.eql('Postman · Нужен ли подогрев руля?');",
                   "    pm.expect(body.status).to.eql('draft');",
                   "    pm.expect(body.effective_status).to.eql('draft');",
                   "    pm.expect(body.options).to.have.lengthOf(2);",
@@ -512,7 +824,7 @@
             "description": "",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Нужен ли подогрев сидений?\",\n  \"status\": \"draft\",\n  \"duration_seconds\": 60,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Да\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"Нет\"\n    }\n  ]\n}",
+              "raw": "{\n  \"name\": \"Postman · Нужен ли подогрев сидений?\",\n  \"status\": \"draft\",\n  \"duration_seconds\": 60,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Да\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"Нет\"\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -543,7 +855,7 @@
                   "});",
                   "const body = pm.response.json();",
                   "pm.test('name updated', function () {",
-                  "    pm.expect(body.name).to.eql('Нужен ли подогрев сидений?');",
+                  "    pm.expect(body.name).to.eql('Postman · Нужен ли подогрев сидений?');",
                   "    pm.expect(body.id).to.eql(Number(pm.collectionVariables.get('draftId')));",
                   "});"
                 ]
@@ -667,7 +979,7 @@
             "description": "Два варианта — тот же метод, что и multiple choice. id сохраняется в abQuestionId.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Бензин или дизель?\",\n  \"status\": \"published\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"a\",\n      \"label\": \"Бензин\"\n    },\n    {\n      \"key\": \"b\",\n      \"label\": \"Дизель\"\n    }\n  ],\n  \"show_time\": \"{{abShowTime}}\"\n}",
+              "raw": "{\n  \"name\": \"Postman · Бензин или дизель?\",\n  \"status\": \"published\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"a\",\n      \"label\": \"Бензин\"\n    },\n    {\n      \"key\": \"b\",\n      \"label\": \"Дизель\"\n    }\n  ],\n  \"show_time\": \"{{abShowTime}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -716,7 +1028,7 @@
             "description": "Опубликованный вопрос отменяют сменой статуса, а не DELETE.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Бензин или дизель?\",\n  \"status\": \"cancelled\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"a\",\n      \"label\": \"Бензин\"\n    },\n    {\n      \"key\": \"b\",\n      \"label\": \"Дизель\"\n    }\n  ]\n}",
+              "raw": "{\n  \"name\": \"Postman · Бензин или дизель?\",\n  \"status\": \"cancelled\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"a\",\n      \"label\": \"Бензин\"\n    },\n    {\n      \"key\": \"b\",\n      \"label\": \"Дизель\"\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -758,7 +1070,7 @@
       ]
     },
     {
-      "name": "04 Viewer — live vote",
+      "name": "05 Viewer — live vote",
       "description": "Создаёт вопрос, который уже идёт (окно 600 секунд), и проверяет дедуп по cookie vid. Cookie jar отключён: идентификатор зрителя задаёт сама коллекция, чтобы повтор и второй браузер не зависели от сохранённых cookie Postman.",
       "item": [
         {
@@ -770,7 +1082,7 @@
             "description": "show_time на 30 секунд в прошлом, окно 600 секунд. id сохраняется в liveQuestionId.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Какой привод практичнее?\",\n  \"status\": \"published\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"a\",\n      \"label\": \"Передний\"\n    },\n    {\n      \"key\": \"b\",\n      \"label\": \"Задний\"\n    },\n    {\n      \"key\": \"c\",\n      \"label\": \"Полный\"\n    },\n    {\n      \"key\": \"d\",\n      \"label\": \"Подключаемый\"\n    }\n  ],\n  \"show_time\": \"{{liveShowTime}}\"\n}",
+              "raw": "{\n  \"name\": \"Postman · Какой привод практичнее?\",\n  \"status\": \"published\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"a\",\n      \"label\": \"Передний\"\n    },\n    {\n      \"key\": \"b\",\n      \"label\": \"Задний\"\n    },\n    {\n      \"key\": \"c\",\n      \"label\": \"Полный\"\n    },\n    {\n      \"key\": \"d\",\n      \"label\": \"Подключаемый\"\n    }\n  ],\n  \"show_time\": \"{{liveShowTime}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -848,7 +1160,7 @@
                   "const body = pm.response.json();",
                   "pm.test('public fields only', function () {",
                   "    pm.expect(body).to.have.keys('id', 'name', 'closes_at', 'options');",
-                  "    pm.expect(body.name).to.eql('Какой привод практичнее?');",
+                  "    pm.expect(body.name).to.eql('Postman · Какой привод практичнее?');",
                   "    pm.expect(body.options.map(function (item) { return item.key; })).to.eql(['a', 'b', 'c', 'd']);",
                   "});",
                   "const setCookie = pm.response.headers.get('Set-Cookie') || '';",
@@ -1177,7 +1489,7 @@
       ]
     },
     {
-      "name": "05 Viewer — window and publication",
+      "name": "06 Viewer — window and publication",
       "description": "Окно считается по серверному времени. Черновик и отменённый вопрос зрителю недоступны.",
       "item": [
         {
@@ -1189,7 +1501,7 @@
             "description": "Старт через час. id сохраняется в scheduledQuestionId.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Берёте зимнюю резину заранее?\",\n  \"status\": \"published\",\n  \"duration_seconds\": 60,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Да\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"Нет\"\n    }\n  ],\n  \"show_time\": \"{{scheduledShowTime}}\"\n}",
+              "raw": "{\n  \"name\": \"Postman · Берёте зимнюю резину заранее?\",\n  \"status\": \"published\",\n  \"duration_seconds\": 60,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Да\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"Нет\"\n    }\n  ],\n  \"show_time\": \"{{scheduledShowTime}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1353,7 +1665,7 @@
             "description": "Окно закончилось около двух минут назад. id сохраняется в closedQuestionId.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Пора менять моторное масло?\",\n  \"status\": \"published\",\n  \"duration_seconds\": 60,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Да\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"Нет\"\n    }\n  ],\n  \"show_time\": \"{{closedShowTime}}\"\n}",
+              "raw": "{\n  \"name\": \"Postman · Пора менять моторное масло?\",\n  \"status\": \"published\",\n  \"duration_seconds\": 60,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Да\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"Нет\"\n    }\n  ],\n  \"show_time\": \"{{closedShowTime}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1519,7 +1831,7 @@
               }
             ],
             "url": "{{baseUrl}}/questionnaire/{{abQuestionId}}",
-            "description": "Вопрос из папки 03 со статусом cancelled.",
+            "description": "Технический вопрос из папки 04 со статусом cancelled.",
             "auth": {
               "type": "noauth"
             }
@@ -1570,7 +1882,7 @@
             "description": "id сохраняется в unpublishedId и удаляется следующим запросом.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Рассматриваете гибрид?\",\n  \"status\": \"draft\",\n  \"duration_seconds\": 60,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Да\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"Нет\"\n    }\n  ]\n}",
+              "raw": "{\n  \"name\": \"Postman · Рассматриваете гибрид?\",\n  \"status\": \"draft\",\n  \"duration_seconds\": 60,\n  \"options\": [\n    {\n      \"key\": \"yes\",\n      \"label\": \"Да\"\n    },\n    {\n      \"key\": \"no\",\n      \"label\": \"Нет\"\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1808,8 +2120,8 @@
       ]
     },
     {
-      "name": "06 Admin — results and locks",
-      "description": "Считает голоса папки 04: a=1, b=1, total=2. Пересчёт из журнала совпадает с Redis при VOTE_ASYNC=false (значение по умолчанию).",
+      "name": "07 Admin — results and locks",
+      "description": "Считает голоса папки 05: a=1, b=1, total=2. Пересчёт из журнала совпадает с Redis при VOTE_ASYNC=false (значение по умолчанию).",
       "item": [
         {
           "name": "GET /questions/{{liveQuestionId}}/results",
@@ -1918,7 +2230,7 @@
             "description": "Набор вариантов после голосов не меняется.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Какой привод практичнее?\",\n  \"status\": \"published\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"a\",\n      \"label\": \"Передний\"\n    },\n    {\n      \"key\": \"z\",\n      \"label\": \"Другое\"\n    }\n  ],\n  \"show_time\": \"{{liveShowTime}}\"\n}",
+              "raw": "{\n  \"name\": \"Postman · Какой привод практичнее?\",\n  \"status\": \"published\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"a\",\n      \"label\": \"Передний\"\n    },\n    {\n      \"key\": \"z\",\n      \"label\": \"Другое\"\n    }\n  ],\n  \"show_time\": \"{{liveShowTime}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1968,7 +2280,7 @@
             "description": "Имя можно поменять, если ключи и подписи вариантов те же.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Какой привод выбрать для города?\",\n  \"status\": \"published\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"a\",\n      \"label\": \"Передний\"\n    },\n    {\n      \"key\": \"b\",\n      \"label\": \"Задний\"\n    },\n    {\n      \"key\": \"c\",\n      \"label\": \"Полный\"\n    },\n    {\n      \"key\": \"d\",\n      \"label\": \"Подключаемый\"\n    }\n  ],\n  \"show_time\": \"{{liveShowTime}}\"\n}",
+              "raw": "{\n  \"name\": \"Postman · Какой привод выбрать для города?\",\n  \"status\": \"published\",\n  \"duration_seconds\": 600,\n  \"options\": [\n    {\n      \"key\": \"a\",\n      \"label\": \"Передний\"\n    },\n    {\n      \"key\": \"b\",\n      \"label\": \"Задний\"\n    },\n    {\n      \"key\": \"c\",\n      \"label\": \"Полный\"\n    },\n    {\n      \"key\": \"d\",\n      \"label\": \"Подключаемый\"\n    }\n  ],\n  \"show_time\": \"{{liveShowTime}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1999,7 +2311,7 @@
                   "});",
                   "const body = pm.response.json();",
                   "pm.test('renamed', function () {",
-                  "    pm.expect(body.name).to.eql('Какой привод выбрать для города?');",
+                  "    pm.expect(body.name).to.eql('Postman · Какой привод выбрать для города?');",
                   "    pm.expect(body.options.map(function (item) { return item.key; })).to.eql(['a', 'b', 'c', 'd']);",
                   "});"
                 ]
