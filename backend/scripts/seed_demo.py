@@ -217,7 +217,7 @@ CATALOG: tuple[CatalogRow, ...] = (
         "live",
         "Какой тип кузова практичнее для города?",
         3600,
-        -180,
+        0,
         ("Седан", "Кроссовер", "Хэтчбек", "Универсал", "Лифтбек"),
         (22, 48, 19, 7, 11),
     ),
@@ -225,7 +225,7 @@ CATALOG: tuple[CatalogRow, ...] = (
         "live",
         "Какую коробку выберете и не пожалеете?",
         3600,
-        -480,
+        0,
         ("Классический автомат", "Механика", "Робот", "Вариатор"),
         (41, 16, 6, 9),
     ),
@@ -264,7 +264,7 @@ CATALOG: tuple[CatalogRow, ...] = (
         "live",
         "Какой расход топлива ещё не смущает?",
         3600,
-        -300,
+        0,
         (
             "До 6 литров",
             "6–8 литров",
@@ -287,7 +287,7 @@ CATALOG: tuple[CatalogRow, ...] = (
         "live",
         "Какой климат в салоне считаете нормой?",
         3600,
-        -900,
+        0,
         (
             "Одной зоны хватает",
             "Две зоны",
@@ -325,7 +325,7 @@ CATALOG: tuple[CatalogRow, ...] = (
         "live",
         "Какой кроссовер взяли бы уже завтра?",
         3600,
-        -1100,
+        0,
         (
             "Toyota RAV4",
             "Hyundai Tucson",
@@ -810,6 +810,10 @@ def _validate(polls: list[DemoPoll], now: datetime) -> None:
     if not saw_empty_option:
         raise RuntimeError("at least one option should have zero votes")
 
+    on_air = _polls_covering_the_next_hour(polls, now)
+    if on_air < 5:
+        raise RuntimeError(f"need at least 5 polls on air for the next hour, found {on_air}")
+
 
 def _validate_window(poll: DemoPoll, now: datetime) -> None:
     stored = poll.finalize or poll.create
@@ -823,6 +827,20 @@ def _validate_window(poll: DemoPoll, now: datetime) -> None:
         raise RuntimeError(f"scheduled poll is not in the future: {poll.name}")
     if poll.phase == "closed" and closes_at > now - timedelta(minutes=5):
         raise RuntimeError(f"closed poll is still inside the voting window: {poll.name}")
+
+
+def _polls_covering_the_next_hour(polls: list[DemoPoll], now: datetime) -> int:
+    hour_end = now + timedelta(hours=1)
+    covering = 0
+    for poll in polls:
+        if poll.phase != "live":
+            continue
+        stored = poll.finalize or poll.create
+        show_time = datetime.fromisoformat(stored["show_time"])
+        closes_at = show_time + timedelta(seconds=int(stored["duration_seconds"]))
+        if show_time <= now and closes_at >= hour_end:
+            covering += 1
+    return covering
 
 
 def _cast_vote(api: ApiClient, question_id: int, option_key: str) -> None:
