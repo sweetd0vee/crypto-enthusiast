@@ -1,127 +1,109 @@
-# Текущий стек и эксплуатация
+# Стек и запуск
 
-Этот документ описывает фактически работающий контур. Семантика системы
-находится в [архитектуре](02-architecture.md), HTTP-схемы — в
-[контракте API](03-api.md), функции и цепочки вызовов — в
-[справочнике по коду](06-code-reference.md).
+Семантика — в [архитектуре](02-architecture.md), HTTP — в
+[контракте](03-api.md), где какой файл — в [карте кода](06-code-reference.md).
 
 ## Компоненты
 
 | Слой | Технологии | Назначение |
 | --- | --- | --- |
 | API | Python 3.12, FastAPI, Uvicorn, Pydantic v2 | публичные и административные маршруты |
-| Данные | PostgreSQL 16, SQLAlchemy 2 Core, asyncpg, Alembic | вопросы, варианты, журнал и снимки |
-| Hot path | Redis 7, redis-py asyncio, Lua | кэш карточки, дедуп и счётчики |
+| Данные | PostgreSQL 16, SQLAlchemy 2 Core, asyncpg, Alembic | вопросы, журнал, снимки |
+| Hot path | Redis 7, redis-py, Lua | карточка, дедуп, счётчики |
 | Frontend | React 18, TypeScript, Vite, React Router | форма зрителя и админка |
-| Web | Nginx | production SPA и same-origin proxy API |
-| Проверки | pytest, fakeredis Lua, Ruff, oxlint, Playwright | unit, HTTP и browser acceptance |
-| Локальный запуск | Docker Compose | полный воспроизводимый контур |
+| Web | Nginx | production SPA и same-origin proxy |
+| Проверки | pytest, fakeredis, lupa, Ruff, oxlint, Playwright | unit, HTTP и браузер |
+| Локально | Docker Compose | полный контур |
 
-Elasticsearch не используется: результат — несколько числовых агрегатов, а
-не полнотекстовый поиск. Redux и отдельный HTTP-клиент не нужны при текущем
-объёме frontend-состояния. WebSocket не нужен: live-результат опрашивается раз
-в две секунды.
-
-## Структура приложения
-
-```text
-backend/
-  app/
-    api/                 # public/admin routes, auth, errors
-    question/            # CRUD, статусы и Redis-кэш
-    vote/                # окно, Lua hot path и журнал
-    result/              # чтение шардов и rebuild
-    store/               # PostgreSQL, Redis, keys, schema
-  migrations/            # Alembic
-  tests/
-  scripts/               # seed и локальная нагрузка
-frontend/
-  src/
-    pages/
-    components/
-    styles/
-  e2e/                   # Playwright acceptance
-docker/
-  compose.yml
-  backend.Dockerfile
-  frontend.Dockerfile
-  nginx.conf
-scripts/verify.sh
-```
+Итог — суммы по 2–10 ключам, поэтому поиска нет. Live-результат
+опрашивается раз в две секунды, WebSocket нет. Отдельного брокера нет:
+пачка журнала живёт в `asyncio.Queue` процесса.
 
 ## Конфигурация
 
 | Переменная | Назначение | Локально |
 | --- | --- | --- |
-| `DATABASE_URL` | подключение PostgreSQL | задаёт Compose |
-| `REDIS_URL` | подключение Redis | задаёт Compose |
-| `ADMIN_TOKEN` | Bearer-токен админского API | `dev-admin-token` |
-| `IP_HASH_SALT` | соль необратимого хеша IP | `dev-salt` |
-| `COUNTER_SHARDS` | число Redis-шардов результата | `1` |
-| `VOTE_ASYNC` | пакетная запись журнала | `false` |
+| `DATABASE_URL` | PostgreSQL, драйвер нормализуется к asyncpg | задаёт Compose |
+| `REDIS_URL` | Redis | задаёт Compose |
+| `ADMIN_TOKEN` | Bearer-токен админки | `dev-admin-token` |
+| `IP_HASH_SALT` | соль хеша IP в журнале | `dev-salt` |
+| `COUNTER_SHARDS` | число шардов счётчика | `1` |
+| `VOTE_ASYNC` | пачечная запись журнала | `false` |
 
-Примеры находятся в `backend/.env.example` и `docker/.env.example`. Реальные
-секреты в репозиторий не добавляются.
+Примеры — `backend/.env.example` и `docker/.env.example`. Секреты в
+репозиторий не кладутся.
 
-## Маршруты frontend
+## Интерфейс
 
-- `/q/:id` — мобильная форма зрителя;
-- `/admin/login` — ввод локального токена;
-- `/admin` — таблица, фильтры и редактор вопросов;
-- `/admin/questions/:id` — обезличенные результаты.
+- `/q/:id` — форма зрителя;
+- `/admin/login` — ввод токена;
+- `/admin` — список, фильтры, редактор;
+- `/admin/questions/:id` — суммы.
 
-Токен хранится в `sessionStorage` и добавляется в `Authorization`. Cookie
-`vid` создаёт backend; frontend её не читает.
+Токен лежит в `sessionStorage` и уходит в `Authorization`. Cookie `vid`
+ставит backend, JavaScript её не читает. QR и ссылка `/q/{id}` доступны для
+вопросов `scheduled` и `live`, файл скачивается как SVG.
 
-Vite используется для HMR на порту `5173`. Production-сборку Nginx отдаёт на
-порту `3000` и проксирует `/questionnaire`, `/questions`, `/healthz`,
-`/docs` и `/openapi.json` в API.
+Vite для разработки слушает `5173` и проксирует API на `localhost:8080`.
+Nginx на `3000` отдаёт сборку и проксирует `/questionnaire`, `/questions`,
+`/healthz`, `/docs`, `/openapi.json`.
 
-## Локальный запуск
+## Запуск
 
 ```bash
 docker compose -f docker/compose.yml up --build
 python3 backend/scripts/seed_demo.py
 ```
 
-Адреса:
-
 - интерфейс — `http://localhost:3000`;
 - API — `http://localhost:8080`;
 - OpenAPI — `http://localhost:8080/docs`.
 
-Контейнеры имеют healthcheck. Alembic применяется до запуска Uvicorn.
+Alembic выполняется до Uvicorn. Контейнеры имеют healthcheck.
+`seed_demo.py` идемпотентен по имени вопроса: черновики, запланированные,
+эфир, завершённые и отменённые опросы, голоса с разными cookie.
 
 ## Проверка
-
-Единая команда:
 
 ```bash
 make verify
 ```
 
-Она выполняет:
+Скрипт `scripts/verify.sh` по порядку:
 
-1. pytest и Ruff;
-2. TypeScript build и oxlint;
-3. проверку и пересборку Compose;
-4. полный HTTP-сценарий;
-5. Playwright-сценарий входа, создания вопросов, двух зрителей и результата.
+1. pytest и Ruff в `backend/.venv`;
+2. сборка TypeScript и oxlint;
+3. `docker compose` с `compose.yml` и `compose.verify.yml`;
+4. HTTP-сценарий на `http://localhost:18080`;
+5. Playwright на `http://localhost:13000`.
 
-HTTP и browser-проверки используют `docker/compose.verify.yml`: отдельный
-проект, порты и временные тома. После проверки контур удаляется, поэтому
-`E2E`/`Integration` записи не попадают в локальные демо-данные.
+Проверочный контур — проект `tv-poll-verify` с другими портами и временными
+томами. `trap` всегда делает `down -v`, тестовые вопросы не попадают в
+локальные демо-данные.
 
-GitHub Actions повторяет проверки на push и pull request и также всегда
-удаляет интеграционные тома.
+GitHub Actions на push и pull request гоняет три job: backend, frontend
+(`npm audit --omit=dev` включительно) и integration. Integration поднимает
+обычный `docker/compose.yml` на портах `3000` и `8080`, затем тоже удаляет
+тома. Это не тот же Compose-файл, что у `make verify`.
 
-## Текущие эксплуатационные ограничения
+Отдельный backend:
 
-- production-аутентификация администратора ещё не реализована;
-- `VOTE_ASYNC=true` использует недолговечную очередь процесса;
-- нет production metrics, SLO, alerts и distributed tracing;
-- Docker Compose не является production orchestration;
-- реальный предел нагрузки не подтверждён capacity-тестом.
+```bash
+cd backend
+python3.12 -m venv .venv
+.venv/bin/pip install -e '.[dev]'
+.venv/bin/pytest
+.venv/bin/ruff check .
+```
 
-Эти ограничения перечислены без повторения завершённых задач в
-[production-roadmap](05-production-roadmap.md).
+HTTP-сценарий против уже запущенного API:
+
+```bash
+RUN_INTEGRATION=1 .venv/bin/pytest tests/test_acceptance_http.py -v
+```
+
+## Чего в этом контуре нет
+
+Статический токен вместо IAM, журнал в памяти процесса при `VOTE_ASYNC=true`,
+нет метрик и трейсов, Compose не является production-оркестрацией, предел
+1,7 млн RPS не измерен. Список — в [roadmap](05-production-roadmap.md).

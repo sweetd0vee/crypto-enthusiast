@@ -40,3 +40,19 @@ docker compose -f docker/compose.yml up --build
 ```bash
 python3 backend/scripts/seed_demo.py
 ```
+
+Проверка всего контура: `make verify`.
+
+## Документы
+
+| Файл | О чём |
+| --- | --- |
+| [`docs/01-specification.md`](docs/01-specification.md) | Требования и инварианты |
+| [`docs/02-architecture.md`](docs/02-architecture.md) | Почему горячий путь идёт через Redis |
+| [`docs/03-api.md`](docs/03-api.md) | Контракт и коды ошибок |
+| [`docs/04-stack.md`](docs/04-stack.md) | Стек, запуск и проверки |
+| [`docs/05-production-roadmap.md`](docs/05-production-roadmap.md) | Чего в этой версии ещё нет |
+| [`docs/06-code-reference.md`](docs/06-code-reference.md) | Карта модулей и цепочки вызовов |
+| [`docs/07-walkthrough.md`](docs/07-walkthrough.md) | Первый проход по задаче и коду |
+| [`docs/08-load.md`](docs/08-load.md) | Как код проводит пик из условия |
+| [`docs/09-project-presentation.md`](docs/09-project-presentation.md) | Текст презентации на 6 слайдов |
