@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import type { Question } from '../types'
+import { ModalDialog } from './ModalDialog'
 import { StatusBadge } from './StatusBadge'
 
 export function QuestionShareDialog({
@@ -34,29 +35,14 @@ export function QuestionShareDialog({
   }
 
   return (
-    <div className="modal-backdrop" role="presentation">
-      <section
-        aria-labelledby="share-title"
-        aria-modal="true"
-        className="modal share-dialog"
-        role="dialog"
-      >
-        <div className="modal-heading">
-          <div>
-            <span className="eyebrow">QR для эфира</span>
-            <h2 id="share-title">{question.name}</h2>
-          </div>
-          <button
-            aria-label="Закрыть"
-            className="close-button"
-            onClick={onClose}
-            type="button"
-          >
-            ×
-          </button>
-        </div>
-
-        <div className="share-content">
+    <ModalDialog
+      className="share-dialog"
+      eyebrow="QR для эфира"
+      onClose={onClose}
+      title={question.name}
+      titleId="share-title"
+    >
+      <div className="share-content">
           <div className="qr-card">
             <QRCodeSVG
               bgColor="#ffffff"
@@ -118,8 +104,7 @@ export function QuestionShareDialog({
               заданное время и закроется по длительности эфира.
             </p>
           </div>
-        </div>
-      </section>
-    </div>
+      </div>
+    </ModalDialog>
   )
 }

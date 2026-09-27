@@ -6,13 +6,13 @@ import {
   filtersAreActive,
   type QuestionFilters,
 } from '../questionListFilters'
-import { ApiError, api } from '../api'
+import { api } from '../api'
 import { AdminLayout } from '../components/AdminLayout'
 import { QuestionEditor } from '../components/QuestionEditor'
 import { QuestionShareDialog } from '../components/QuestionShareDialog'
 import { QuestionStats } from '../components/QuestionStats'
 import { QuestionTable } from '../components/QuestionTable'
-import { errorMessage } from '../errorMessages'
+import { adminErrorMessage, errorMessage } from '../errorMessages'
 import type { Question } from '../types'
 import { useAdminGuard } from '../useAdminGuard'
 
@@ -51,12 +51,7 @@ export function AdminPage() {
       await loadQuestions()
     } catch (requestError) {
       if (rejectUnauthorized(requestError)) return
-      const code = requestError instanceof ApiError ? requestError.body.error : null
-      setError(
-        code === 'delete_forbidden'
-          ? 'Нельзя удалить опубликованный вопрос или вопрос с голосами'
-          : errorMessage(requestError, 'Не удалось удалить вопрос'),
-      )
+      setError(adminErrorMessage(requestError, 'Не удалось удалить вопрос'))
     }
   }
 

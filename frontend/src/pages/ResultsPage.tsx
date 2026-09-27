@@ -7,6 +7,8 @@ import { errorMessage } from '../errorMessages'
 import type { QuestionResult } from '../types'
 import { useAdminGuard } from '../useAdminGuard'
 
+const RESULTS_POLL_INTERVAL_MS = 2_000
+
 export function ResultsPage() {
   const { id = '' } = useParams()
   const rejectUnauthorized = useAdminGuard()
@@ -31,7 +33,10 @@ export function ResultsPage() {
 
   useEffect(() => {
     if (result?.effective_status !== 'live') return
-    const timer = window.setInterval(() => void loadResults(), 2000)
+    const timer = window.setInterval(
+      () => void loadResults(),
+      RESULTS_POLL_INTERVAL_MS,
+    )
     return () => window.clearInterval(timer)
   }, [loadResults, result?.effective_status])
 
@@ -59,7 +64,9 @@ export function ResultsPage() {
             <div className="result-meta">
               <StatusBadge status={result.effective_status} />
               {result.effective_status === 'live' && (
-                <span className="live-note">Обновляется каждые 2 секунды</span>
+                <span className="live-note">
+                  Обновляется каждые {RESULTS_POLL_INTERVAL_MS / 1000} секунды
+                </span>
               )}
             </div>
             <section className="panel results-panel">

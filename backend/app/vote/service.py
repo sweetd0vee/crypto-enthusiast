@@ -4,6 +4,7 @@ import hashlib
 import logging
 import math
 import zlib
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from redis.asyncio import Redis
@@ -23,6 +24,15 @@ DEDUP_TTL_MARGIN_SECONDS = 86_400
 VOTE_UNAVAILABLE = "Сервис голосования временно недоступен"
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class _VoteContext:
+    question: QuestionOutput
+    closes_at: datetime
+    dedup_key: str
+    redis_dedup_key: str
+
 
 def dedup_hash(question_id: int, viewer_id: str) -> str:
     return hashlib.sha256(f"{question_id}|{viewer_id}".encode()).hexdigest()
@@ -72,6 +82,24 @@ def _counter_shard(dedup_key: str, counter_shards: int) -> int:
     return zlib.crc32(dedup_key.encode()) % counter_shards
 
 
+async def _vote_context(
+    engine: AsyncEngine,
+    redis: Redis,
+    question_id: int,
+    viewer_id: str,
+    now: datetime,
+) -> _VoteContext:
+    question = await _load_question(engine, redis, question_id)
+    closes_at = _check_window(question, now)
+    key = dedup_hash(question_id, viewer_id)
+    return _VoteContext(
+        question=question,
+        closes_at=closes_at,
+        dedup_key=key,
+        redis_dedup_key=vote_dedup_key(question_id, key),
+    )
+
+
 async def get_public_question(
     engine: AsyncEngine,
     redis: Redis,
@@ -81,14 +109,12 @@ async def get_public_question(
     now: datetime | None = None,
 ) -> PublicQuestion:
     current_time = now or datetime.now(UTC)
-    question = await _load_question(engine, redis, question_id)
-    closes_at = _check_window(question, current_time)
-    dedup_key = vote_dedup_key(question_id, dedup_hash(question_id, viewer_id))
+    context = await _vote_context(engine, redis, question_id, viewer_id, current_time)
     with unavailable_on_redis_error(VOTE_UNAVAILABLE):
-        if await redis.exists(dedup_key):
+        if await redis.exists(context.redis_dedup_key):
             raise AppError(409, "already_voted", "Вы уже проголосовали")
 
-    return _public_question(question, closes_at)
+    return _public_question(context.question, context.closes_at)
 
 
 async def accept_vote(
@@ -106,20 +132,17 @@ async def accept_vote(
     now: datetime | None = None,
 ) -> None:
     current_time = now or datetime.now(UTC)
-    question = await _load_question(engine, redis, question_id)
-    closes_at = _check_window(question, current_time)
-    if option_key not in {option.key for option in question.options}:
+    context = await _vote_context(engine, redis, question_id, viewer_id, current_time)
+    if option_key not in {option.key for option in context.question.options}:
         raise AppError(422, "invalid_option", "Такого варианта ответа нет")
 
-    dedup_key = dedup_hash(question_id, viewer_id)
-    redis_dedup_key = vote_dedup_key(question_id, dedup_key)
     with unavailable_on_redis_error(VOTE_UNAVAILABLE):
-        shard = _counter_shard(dedup_key, counter_shards)
+        shard = _counter_shard(context.dedup_key, counter_shards)
         first_vote = await _reserve_and_increment(
             redis,
-            dedup_key=redis_dedup_key,
+            dedup_key=context.redis_dedup_key,
             counter_key=result_counter_key(question_id, shard),
-            ttl=_dedup_ttl(closes_at, current_time),
+            ttl=_dedup_ttl(context.closes_at, current_time),
             option_key=option_key,
         )
         if not first_vote:
@@ -128,7 +151,7 @@ async def accept_vote(
     event = VoteEvent(
         question_id=question_id,
         option_key=option_key,
-        dedup_key=dedup_key,
+        dedup_key=context.dedup_key,
         ip_hash=client_ip_hash(client_ip, ip_hash_salt),
         voted_at=current_time,
     )

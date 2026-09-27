@@ -20,7 +20,7 @@ from app.question.models import (
     QuestionUpdate,
     effective_status,
 )
-from app.store.keys import result_counter_keys
+from app.store.counter_shards import counter_shards_have_votes, read_counter_shards
 from app.store.schema import question, question_option, vote
 
 
@@ -199,12 +199,8 @@ async def _has_votes(
     )
     if in_database:
         return True
-    keys = result_counter_keys(question_id, counter_shards)
-    pipeline = redis.pipeline(transaction=False)
-    for key in keys:
-        pipeline.hvals(key)
-    shard_values = await pipeline.execute()
-    return any(int(value) > 0 for values in shard_values for value in values)
+    shards = await read_counter_shards(redis, question_id, counter_shards)
+    return counter_shards_have_votes(shards)
 
 
 async def update_question(

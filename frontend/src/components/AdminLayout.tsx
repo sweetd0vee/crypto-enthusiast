@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { clearAdminToken } from '../adminAuth'
 import { LogoutIcon } from './Icons'
 
 export function AdminLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
 
   function logout() {
-    sessionStorage.removeItem('adminToken')
+    clearAdminToken()
     navigate('/admin/login')
   }
 

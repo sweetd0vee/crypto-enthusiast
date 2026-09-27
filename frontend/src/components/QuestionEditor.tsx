@@ -1,13 +1,15 @@
 import { type FormEvent, useState } from 'react'
-import { ApiError, api } from '../api'
+import { api } from '../api'
 import { toLocalDateTimeInput } from '../displayFormatting'
-import { errorMessage } from '../errorMessages'
+import { adminErrorMessage } from '../errorMessages'
 import type {
   OptionInput,
   Question,
   QuestionInput,
   QuestionStatus,
 } from '../types'
+import { useAdminGuard } from '../useAdminGuard'
+import { ModalDialog } from './ModalDialog'
 
 export function QuestionEditor({
   question,
@@ -18,6 +20,7 @@ export function QuestionEditor({
   onClose: () => void
   onSaved: () => Promise<void>
 }) {
+  const rejectUnauthorized = useAdminGuard()
   const [name, setName] = useState(question?.name ?? '')
   const [showTime, setShowTime] = useState(
     toLocalDateTimeInput(question?.show_time ?? null),
@@ -66,44 +69,20 @@ export function QuestionEditor({
       }
       await onSaved()
     } catch (requestError) {
-      const code =
-        requestError instanceof ApiError ? requestError.body.error : null
-      setError(
-        code === 'options_locked'
-          ? 'Нельзя менять варианты после появления голосов'
-          : errorMessage(requestError, 'Не удалось сохранить вопрос'),
-      )
+      if (rejectUnauthorized(requestError)) return
+      setError(adminErrorMessage(requestError, 'Не удалось сохранить вопрос'))
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <div className="modal-backdrop" role="presentation">
-      <section
-        aria-labelledby="editor-title"
-        aria-modal="true"
-        className="modal"
-        role="dialog"
-      >
-        <div className="modal-heading">
-          <div>
-            <span className="eyebrow">
-              {question ? `Вопрос #${question.id}` : 'Новый вопрос'}
-            </span>
-            <h2 id="editor-title">
-              {question ? 'Изменить вопрос' : 'Создать вопрос'}
-            </h2>
-          </div>
-          <button
-            aria-label="Закрыть"
-            className="close-button"
-            onClick={onClose}
-            type="button"
-          >
-            ×
-          </button>
-        </div>
+    <ModalDialog
+      eyebrow={question ? `Вопрос #${question.id}` : 'Новый вопрос'}
+      onClose={onClose}
+      title={question ? 'Изменить вопрос' : 'Создать вопрос'}
+      titleId="editor-title"
+    >
         <form className="editor-form" onSubmit={(event) => void save(event)}>
           <label>
             Название
@@ -210,7 +189,6 @@ export function QuestionEditor({
             </button>
           </div>
         </form>
-      </section>
-    </div>
+    </ModalDialog>
   )
 }

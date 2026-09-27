@@ -341,7 +341,7 @@ th {
 }
 
 .reset-filters {
-  width: 180px;
+  width: 220px;
   min-height: 48px;
   padding: 8px 11px;
   border-radius: 8px;
@@ -352,7 +352,7 @@ th {
 }
 
 .create-button {
-  width: 180px;
+  width: 220px;
   min-height: 48px;
 }
 

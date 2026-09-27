@@ -10,6 +10,7 @@ from app.errors import unavailable_on_redis_error
 from app.question.models import QuestionOutput
 from app.question.service import get_question
 from app.result.models import OptionCount, QuestionResult
+from app.store.counter_shards import aggregate_counter_shards, read_counter_shards
 from app.store.keys import result_counter_keys
 from app.store.schema import question_result, vote
 
@@ -72,21 +73,9 @@ async def _read_counters(
     question_id: int,
     counter_shards: int,
 ) -> tuple[bool, dict[str, int]]:
-    keys = result_counter_keys(question_id, counter_shards)
     with unavailable_on_redis_error(COUNTERS_UNAVAILABLE):
-        pipeline = redis.pipeline(transaction=False)
-        for key in keys:
-            pipeline.hgetall(key)
-        shards = await pipeline.execute()
-
-    totals: dict[str, int] = {}
-    found = False
-    for shard in shards:
-        if shard:
-            found = True
-        for option_key, count in shard.items():
-            totals[option_key] = totals.get(option_key, 0) + int(count)
-    return found, totals
+        shards = await read_counter_shards(redis, question_id, counter_shards)
+    return any(shards), aggregate_counter_shards(shards)
 
 
 def _response(question: QuestionOutput, counts: dict[str, int]) -> QuestionResult:

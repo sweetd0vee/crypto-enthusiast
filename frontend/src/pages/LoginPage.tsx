@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { setAdminToken } from '../adminAuth'
 
 export function LoginPage() {
   const navigate = useNavigate()
@@ -8,7 +9,7 @@ export function LoginPage() {
   function login(event: FormEvent) {
     event.preventDefault()
     if (!token.trim()) return
-    sessionStorage.setItem('adminToken', token.trim())
+    setAdminToken(token.trim())
     navigate('/admin', { replace: true })
   }
 

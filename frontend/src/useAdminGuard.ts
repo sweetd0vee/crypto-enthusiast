@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { clearAdminToken } from './adminAuth'
 import { ApiError } from './api'
 
 export function useAdminGuard() {
@@ -10,7 +11,7 @@ export function useAdminGuard() {
       if (!(error instanceof ApiError) || error.body.error !== 'unauthorized') {
         return false
       }
-      sessionStorage.removeItem('adminToken')
+      clearAdminToken()
       navigate('/admin/login', { replace: true })
       return true
     },

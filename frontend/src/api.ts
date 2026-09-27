@@ -5,6 +5,7 @@ import type {
   QuestionInput,
   QuestionResult,
 } from './types'
+import { getAdminToken } from './adminAuth'
 
 export class ApiError extends Error {
   status: number
@@ -37,7 +38,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 function adminRequest<T>(url: string, init: RequestInit = {}): Promise<T> {
-  const token = sessionStorage.getItem('adminToken')
+  const token = getAdminToken()
   const headers = new Headers(init.headers)
   if (token) {
     headers.set('Authorization', `Bearer ${token}`)
@@ -64,9 +65,6 @@ export const api = {
     ),
 
   listQuestions: () => adminRequest<Question[]>('/questions'),
-
-  getQuestion: (id: string) =>
-    adminRequest<Question>(`/questions/${id}`),
 
   createQuestion: (input: QuestionInput) =>
     adminRequest<Question>('/questions', jsonInit('POST', input)),
