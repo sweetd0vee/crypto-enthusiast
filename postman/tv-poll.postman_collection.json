@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "7c4e9a12-6b3d-4f85-9c20-1a8e5d0f6b42",
     "name": "Минутный ТВ-опрос",
-    "description": "Локальная проверка API минутного ТВ-опроса и автомобильного демо-каталога из `backend/scripts/seed_demo.py`.\n\nПеред запуском всей коллекции выполните seed-скрипт. Порядок папок фиксирован: Collection Runner запускает их сверху вниз. Папка 03 находит демо-опросы по стабильным именам и сохраняет их id; папки 05 и 07 связаны общими голосами, папка 06 читает отменённый вопрос из папки 04.\n\nПеременные `baseUrl` и `adminToken` можно переопределить окружением. id вопросов и cookie `vid` коллекция записывает сама. Технические вопросы, создаваемые тестами, имеют префикс `Postman ·` и не смешиваются с демо-каталогом.\n\nАдминские запросы наследуют Bearer. Зрительские запросы идут без токена.",
+    "description": "Локальная проверка API минутного ТВ-опроса и автомобильного демо-каталога из `backend/scripts/seed_demo.py`.\n\nПеред запуском всей коллекции выполните seed-скрипт. Порядок папок фиксирован: Collection Runner запускает их сверху вниз. Папка 03 находит демо-опросы по стабильным именам и сохраняет их id. Эффективный статус опорных опросов сверяется с окном `show_time` + `duration_seconds` на момент прогона, а не с моментом заливки каталога. Папки 05 и 07 связаны общими голосами, папка 06 читает отменённый вопрос из папки 04.\n\nПеременные `baseUrl` и `adminToken` можно переопределить окружением. id вопросов и cookie `vid` коллекция записывает сама. Технические вопросы, создаваемые тестами, имеют префикс `Postman ·` и не смешиваются с демо-каталогом.\n\nАдминские запросы наследуют Bearer. Зрительские запросы идут без токена.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -77,11 +77,19 @@
       "value": ""
     },
     {
-      "key": "demoLiveId",
+      "key": "demoBodyId",
       "value": ""
     },
     {
-      "key": "demoScheduledId",
+      "key": "demoBodyStatus",
+      "value": ""
+    },
+    {
+      "key": "demoEvId",
+      "value": ""
+    },
+    {
+      "key": "demoEvStatus",
       "value": ""
     },
     {
@@ -212,7 +220,7 @@
     },
     {
       "name": "03 Demo — automotive catalog",
-      "description": "Read-only smoke-проверка 56 автомобильных демо-опросов. Сначала запустите `python3 backend/scripts/seed_demo.py`. ID находятся по именам, поэтому коллекция не зависит от sequence PostgreSQL.",
+      "description": "Read-only проверка 56 автомобильных демо-опросов. Сначала запустите `python3 backend/scripts/seed_demo.py`. ID ищутся по именам. Статус опорного опроса считается из окна показа: после окончания эфира бывший live становится closed.",
       "item": [
         {
           "name": "GET /questions — find demo catalog",
@@ -232,39 +240,45 @@
                   "    pm.response.to.have.status(200);",
                   "});",
                   "const questions = pm.response.json();",
-                  "pm.test('at least 50 automotive demo polls', function () {",
-                  "    pm.expect(questions.length).to.be.at.least(50);",
+                  "const demo = questions.filter(function (question) {",
+                  "    return String(question.name).indexOf('Postman ·') !== 0;",
                   "});",
-                  "const statuses = questions.reduce(function (acc, question) {",
-                  "    acc[question.effective_status] = (acc[question.effective_status] || 0) + 1;",
-                  "    return acc;",
-                  "}, {});",
-                  "pm.test('all effective statuses are represented', function () {",
-                  "    ['draft', 'scheduled', 'live', 'closed', 'cancelled'].forEach(function (status) {",
-                  "        pm.expect(statuses[status] || 0, status).to.be.above(0);",
-                  "    });",
+                  "pm.test('at least 56 automotive demo polls', function () {",
+                  "    pm.expect(demo.length).to.be.at.least(56);",
                   "});",
                   "pm.test('different option counts are represented', function () {",
-                  "    const sizes = questions.map(function (question) { return question.options.length; });",
-                  "    [2, 3, 4, 5, 6, 7, 8, 10].forEach(function (size) {",
+                  "    const sizes = demo.map(function (question) { return question.options.length; });",
+                  "    [2, 3, 4, 5, 6, 7, 8, 9, 10].forEach(function (size) {",
                   "        pm.expect(sizes, size + ' options').to.include(size);",
                   "    });",
                   "});",
+                  "function effectiveStatus(question) {",
+                  "    if (question.status !== 'published') return question.status;",
+                  "    const start = new Date(question.show_time).getTime();",
+                  "    const end = start + question.duration_seconds * 1000;",
+                  "    const now = Date.now();",
+                  "    if (now < start) return 'scheduled';",
+                  "    if (now < end) return 'live';",
+                  "    return 'closed';",
+                  "}",
                   "const fixtures = [",
-                  "    ['demoLiveId', 'Какой тип кузова практичнее для города?', 'live', 5],",
-                  "    ['demoScheduledId', 'Какой электромобиль поставили бы в гараж?', 'scheduled', 5],",
-                  "    ['demoClosedId', 'Откуда должна быть машина мечты?', 'closed', 10],",
-                  "    ['demoDraftId', 'Панорамная крыша — берёте?', 'draft', 3],",
-                  "    ['demoCancelledId', 'Бензин или дизель для большого универсала?', 'cancelled', 2]",
+                  "    ['demoBodyId', 'demoBodyStatus', 'Какой тип кузова практичнее для города?', 5],",
+                  "    ['demoEvId', 'demoEvStatus', 'Какой электромобиль поставили бы в гараж?', 5],",
+                  "    ['demoClosedId', 'demoClosedStatus', 'Откуда должна быть машина мечты?', 10],",
+                  "    ['demoDraftId', 'demoDraftStatus', 'Панорамная крыша — берёте?', 3],",
+                  "    ['demoCancelledId', 'demoCancelledStatus', 'Бензин или дизель для большого универсала?', 2]",
                   "];",
                   "fixtures.forEach(function (fixture) {",
-                  "    const found = questions.find(function (question) { return question.name === fixture[1]; });",
-                  "    pm.test('demo exists: ' + fixture[1], function () {",
-                  "        pm.expect(found, fixture[1]).to.not.equal(undefined);",
-                  "        pm.expect(found.effective_status).to.eql(fixture[2]);",
+                  "    const found = demo.find(function (question) { return question.name === fixture[2]; });",
+                  "    pm.test('demo exists: ' + fixture[2], function () {",
+                  "        pm.expect(found, fixture[2]).to.not.equal(undefined);",
                   "        pm.expect(found.options).to.have.lengthOf(fixture[3]);",
+                  "        pm.expect(found.effective_status).to.eql(effectiveStatus(found));",
                   "    });",
-                  "    if (found) pm.collectionVariables.set(fixture[0], String(found.id));",
+                  "    if (found) {",
+                  "        pm.collectionVariables.set(fixture[0], String(found.id));",
+                  "        pm.collectionVariables.set(fixture[1], found.effective_status);",
+                  "    }",
                   "});"
                 ]
               }
@@ -272,7 +286,7 @@
           ]
         },
         {
-          "name": "GET live demo form",
+          "name": "GET body-type demo form",
           "request": {
             "method": "GET",
             "header": [
@@ -281,8 +295,8 @@
                 "value": "vid={{viewerFresh}}"
               }
             ],
-            "url": "{{baseUrl}}/questionnaire/{{demoLiveId}}",
-            "description": "Публичная карточка действующего демо-опроса.",
+            "url": "{{baseUrl}}/questionnaire/{{demoBodyId}}",
+            "description": "Публичная форма «Какой тип кузова практичнее для города?». Код ответа зависит от окна: 200 пока эфир идёт, 410 после закрытия.",
             "auth": {
               "type": "noauth"
             }
@@ -293,9 +307,61 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "const id = pm.collectionVariables.get('demoLiveId');",
+                  "const id = pm.collectionVariables.get('demoBodyId');",
                   "if (!/^\\d+$/.test(id || '')) throw new Error('Сначала выполните поиск демо-каталога');",
                   "pm.collectionVariables.set('viewerFresh', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const expected = pm.collectionVariables.get('demoBodyStatus');",
+                  "const body = pm.response.json();",
+                  "if (expected === 'live') {",
+                  "    pm.test('HTTP 200', function () {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "    pm.test('live body-type form', function () {",
+                  "        pm.expect(body.name).to.eql('Какой тип кузова практичнее для города?');",
+                  "        pm.expect(body.options.map(function (row) { return row.label; })).to.eql(['Седан', 'Кроссовер', 'Хэтчбек', 'Универсал', 'Лифтбек']);",
+                  "        pm.expect(new Date(body.closes_at).getTime()).to.be.above(Date.now());",
+                  "    });",
+                  "} else {",
+                  "    pm.test('HTTP 410', function () {",
+                  "        pm.response.to.have.status(410);",
+                  "    });",
+                  "    pm.test('body-type window is closed', function () {",
+                  "        pm.expect(expected).to.eql('closed');",
+                  "        pm.expect(body.error).to.eql('window_closed');",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "GET body-type demo results",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/questions/{{demoBodyId}}/results",
+            "description": "Голоса кузовного опроса из seed_demo.py. Суммы не зависят от того, идёт эфир или уже закрыт."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.collectionVariables.get('demoBodyId');",
+                  "if (!/^\\d+$/.test(id || '')) throw new Error('Сначала выполните поиск демо-каталога');"
                 ]
               }
             },
@@ -308,18 +374,23 @@
                   "    pm.response.to.have.status(200);",
                   "});",
                   "const body = pm.response.json();",
-                  "pm.test('live automotive form', function () {",
+                  "const expected = {",
+                  "    'Седан': 22, 'Кроссовер': 48, 'Хэтчбек': 19, 'Универсал': 7, 'Лифтбек': 11",
+                  "};",
+                  "pm.test('prepared body-type result', function () {",
                   "    pm.expect(body.name).to.eql('Какой тип кузова практичнее для города?');",
-                  "    pm.expect(body.options.map(function (row) { return row.label; })).to.eql(['Седан', 'Кроссовер', 'Хэтчбек', 'Универсал', 'Лифтбек']);",
-                  "    pm.expect(new Date(body.closes_at).getTime()).to.be.above(Date.now());",
+                  "    pm.expect(body.effective_status).to.eql(pm.collectionVariables.get('demoBodyStatus'));",
+                  "    pm.expect(body.total).to.eql(107);",
+                  "    pm.expect(body.counts).to.have.lengthOf(5);",
+                  "    body.counts.forEach(function (row) { pm.expect(row.count).to.eql(expected[row.label]); });",
+                  "});",
+                  "pm.test('total matches sum', function () {",
+                  "    pm.expect(body.counts.reduce(function (sum, row) { return sum + row.count; }, 0)).to.eql(body.total);",
                   "});"
                 ]
               }
             }
-          ],
-          "protocolProfileBehavior": {
-            "disableCookies": true
-          }
+          ]
         },
         {
           "name": "GET closed demo results",
@@ -407,7 +478,7 @@
           ]
         },
         {
-          "name": "GET scheduled demo form",
+          "name": "GET electric-car demo form",
           "request": {
             "method": "GET",
             "header": [
@@ -416,8 +487,8 @@
                 "value": "vid={{viewerFresh}}"
               }
             ],
-            "url": "{{baseUrl}}/questionnaire/{{demoScheduledId}}",
-            "description": "Запланированный демо-опрос пока не открывается зрителю.",
+            "url": "{{baseUrl}}/questionnaire/{{demoEvId}}",
+            "description": "Форма «Какой электромобиль поставили бы в гараж?». До старта — 403, в окне — 200, после окна — 410.",
             "auth": {
               "type": "noauth"
             }
@@ -428,7 +499,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "const id = pm.collectionVariables.get('demoScheduledId');",
+                  "const id = pm.collectionVariables.get('demoEvId');",
                   "if (!/^\\d+$/.test(id || '')) throw new Error('Сначала выполните поиск демо-каталога');",
                   "pm.collectionVariables.set('viewerFresh', pm.variables.replaceIn('{{$guid}}'));"
                 ]
@@ -439,12 +510,32 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('HTTP 403', function () {",
-                  "    pm.response.to.have.status(403);",
-                  "});",
-                  "pm.test('window has not started', function () {",
-                  "    pm.expect(pm.response.json().error).to.eql('window_not_started');",
-                  "});"
+                  "const expected = pm.collectionVariables.get('demoEvStatus');",
+                  "const body = pm.response.json();",
+                  "if (expected === 'scheduled') {",
+                  "    pm.test('HTTP 403', function () {",
+                  "        pm.response.to.have.status(403);",
+                  "    });",
+                  "    pm.test('window has not started', function () {",
+                  "        pm.expect(body.error).to.eql('window_not_started');",
+                  "    });",
+                  "} else if (expected === 'live') {",
+                  "    pm.test('HTTP 200', function () {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "    pm.test('electric-car form is open', function () {",
+                  "        pm.expect(body.name).to.eql('Какой электромобиль поставили бы в гараж?');",
+                  "        pm.expect(body.options).to.have.lengthOf(5);",
+                  "    });",
+                  "} else {",
+                  "    pm.test('HTTP 410', function () {",
+                  "        pm.response.to.have.status(410);",
+                  "    });",
+                  "    pm.test('electric-car window is closed', function () {",
+                  "        pm.expect(expected).to.eql('closed');",
+                  "        pm.expect(body.error).to.eql('window_closed');",
+                  "    });",
+                  "}"
                 ]
               }
             }
@@ -751,7 +842,7 @@
                 "exec": [
                   "const id = pm.collectionVariables.get('draftId');",
                   "if (!/^\\d+$/.test(id || '')) {",
-                  "    throw new Error('Сначала выполните папку 03: нет draftId');",
+                  "    throw new Error('Сначала выполните папку 04: нет draftId');",
                   "}"
                 ]
               }
@@ -790,7 +881,7 @@
                 "exec": [
                   "const id = pm.collectionVariables.get('draftId');",
                   "if (!/^\\d+$/.test(id || '')) {",
-                  "    throw new Error('Сначала выполните папку 03: нет draftId');",
+                  "    throw new Error('Сначала выполните папку 04: нет draftId');",
                   "}"
                 ]
               }
@@ -840,7 +931,7 @@
                 "exec": [
                   "const id = pm.collectionVariables.get('draftId');",
                   "if (!/^\\d+$/.test(id || '')) {",
-                  "    throw new Error('Сначала выполните папку 03: нет draftId');",
+                  "    throw new Error('Сначала выполните папку 04: нет draftId');",
                   "}"
                 ]
               }
@@ -879,7 +970,7 @@
                 "exec": [
                   "const id = pm.collectionVariables.get('draftId');",
                   "if (!/^\\d+$/.test(id || '')) {",
-                  "    throw new Error('Сначала выполните папку 03: нет draftId');",
+                  "    throw new Error('Сначала выполните папку 04: нет draftId');",
                   "}"
                 ]
               }
@@ -916,7 +1007,7 @@
                 "exec": [
                   "const id = pm.collectionVariables.get('draftId');",
                   "if (!/^\\d+$/.test(id || '')) {",
-                  "    throw new Error('Сначала выполните папку 03: нет draftId');",
+                  "    throw new Error('Сначала выполните папку 04: нет draftId');",
                   "}"
                 ]
               }
@@ -1044,7 +1135,7 @@
                 "exec": [
                   "const id = pm.collectionVariables.get('abQuestionId');",
                   "if (!/^\\d+$/.test(id || '')) {",
-                  "    throw new Error('Сначала выполните папку 03: нет abQuestionId');",
+                  "    throw new Error('Сначала выполните папку 04: нет abQuestionId');",
                   "}"
                 ]
               }
@@ -1144,7 +1235,7 @@
                 "exec": [
                   "const id = pm.collectionVariables.get('liveQuestionId');",
                   "if (!/^\\d+$/.test(id || '')) {",
-                  "    throw new Error('Сначала выполните папку 04: нет liveQuestionId');",
+                  "    throw new Error('Сначала выполните папку 05: нет liveQuestionId');",
                   "}"
                 ]
               }
@@ -1212,7 +1303,7 @@
                 "exec": [
                   "const id = pm.collectionVariables.get('liveQuestionId');",
                   "if (!/^\\d+$/.test(id || '')) {",
-                  "    throw new Error('Сначала выполните папку 04: нет liveQuestionId');",
+                  "    throw new Error('Сначала выполните папку 05: нет liveQuestionId');",
                   "}",
                   "const cookieValue = pm.collectionVariables.get('viewerA');",
                   "if (!cookieValue) {",
@@ -1276,7 +1367,7 @@
                 "exec": [
                   "const id = pm.collectionVariables.get('liveQuestionId');",
                   "if (!/^\\d+$/.test(id || '')) {",
-                  "    throw new Error('Сначала выполните папку 04: нет liveQuestionId');",
+                  "    throw new Error('Сначала выполните папку 05: нет liveQuestionId');",
                   "}",
                   "const cookieValue = pm.collectionVariables.get('viewerA');",
                   "if (!cookieValue) {",
@@ -1341,7 +1432,7 @@
                 "exec": [
                   "const id = pm.collectionVariables.get('liveQuestionId');",
                   "if (!/^\\d+$/.test(id || '')) {",
-                  "    throw new Error('Сначала выполните папку 04: нет liveQuestionId');",
+                  "    throw new Error('Сначала выполните папку 05: нет liveQuestionId');",
                   "}",
                   "pm.collectionVariables.set('viewerB', pm.variables.replaceIn('{{$guid}}'));"
                 ]
@@ -1401,7 +1492,7 @@
                 "exec": [
                   "const id = pm.collectionVariables.get('liveQuestionId');",
                   "if (!/^\\d+$/.test(id || '')) {",
-                  "    throw new Error('Сначала выполните папку 04: нет liveQuestionId');",
+                  "    throw new Error('Сначала выполните папку 05: нет liveQuestionId');",
                   "}",
                   "pm.collectionVariables.set('viewerFresh', pm.variables.replaceIn('{{$guid}}'));"
                 ]
@@ -1454,7 +1545,7 @@
                 "exec": [
                   "const id = pm.collectionVariables.get('liveQuestionId');",
                   "if (!/^\\d+$/.test(id || '')) {",
-                  "    throw new Error('Сначала выполните папку 04: нет liveQuestionId');",
+                  "    throw new Error('Сначала выполните папку 05: нет liveQuestionId');",
                   "}",
                   "const cookieValue = pm.collectionVariables.get('viewerA');",
                   "if (!cookieValue) {",
@@ -1565,7 +1656,7 @@
                 "exec": [
                   "const id = pm.collectionVariables.get('scheduledQuestionId');",
                   "if (!/^\\d+$/.test(id || '')) {",
-                  "    throw new Error('Сначала выполните папку 05: нет scheduledQuestionId');",
+                  "    throw new Error('Сначала выполните папку 06: нет scheduledQuestionId');",
                   "}",
                   "pm.collectionVariables.set('viewerFresh', pm.variables.replaceIn('{{$guid}}'));"
                 ]
@@ -1627,7 +1718,7 @@
                 "exec": [
                   "const id = pm.collectionVariables.get('scheduledQuestionId');",
                   "if (!/^\\d+$/.test(id || '')) {",
-                  "    throw new Error('Сначала выполните папку 05: нет scheduledQuestionId');",
+                  "    throw new Error('Сначала выполните папку 06: нет scheduledQuestionId');",
                   "}",
                   "pm.collectionVariables.set('viewerFresh', pm.variables.replaceIn('{{$guid}}'));"
                 ]
@@ -1729,7 +1820,7 @@
                 "exec": [
                   "const id = pm.collectionVariables.get('closedQuestionId');",
                   "if (!/^\\d+$/.test(id || '')) {",
-                  "    throw new Error('Сначала выполните папку 05: нет closedQuestionId');",
+                  "    throw new Error('Сначала выполните папку 06: нет closedQuestionId');",
                   "}",
                   "pm.collectionVariables.set('viewerFresh', pm.variables.replaceIn('{{$guid}}'));"
                 ]
@@ -1791,7 +1882,7 @@
                 "exec": [
                   "const id = pm.collectionVariables.get('closedQuestionId');",
                   "if (!/^\\d+$/.test(id || '')) {",
-                  "    throw new Error('Сначала выполните папку 05: нет closedQuestionId');",
+                  "    throw new Error('Сначала выполните папку 06: нет closedQuestionId');",
                   "}",
                   "pm.collectionVariables.set('viewerFresh', pm.variables.replaceIn('{{$guid}}'));"
                 ]
@@ -1844,7 +1935,7 @@
                 "exec": [
                   "const id = pm.collectionVariables.get('abQuestionId');",
                   "if (!/^\\d+$/.test(id || '')) {",
-                  "    throw new Error('Сначала выполните папку 03: нет abQuestionId');",
+                  "    throw new Error('Сначала выполните папку 04: нет abQuestionId');",
                   "}",
                   "pm.collectionVariables.set('viewerFresh', pm.variables.replaceIn('{{$guid}}'));"
                 ]
@@ -1936,7 +2027,7 @@
                 "exec": [
                   "const id = pm.collectionVariables.get('unpublishedId');",
                   "if (!/^\\d+$/.test(id || '')) {",
-                  "    throw new Error('Сначала выполните папку 05: нет unpublishedId');",
+                  "    throw new Error('Сначала выполните папку 06: нет unpublishedId');",
                   "}",
                   "pm.collectionVariables.set('viewerFresh', pm.variables.replaceIn('{{$guid}}'));"
                 ]
@@ -1981,7 +2072,7 @@
                 "exec": [
                   "const id = pm.collectionVariables.get('unpublishedId');",
                   "if (!/^\\d+$/.test(id || '')) {",
-                  "    throw new Error('Сначала выполните папку 05: нет unpublishedId');",
+                  "    throw new Error('Сначала выполните папку 06: нет unpublishedId');",
                   "}"
                 ]
               }
@@ -2050,7 +2141,7 @@
                 "exec": [
                   "const id = pm.collectionVariables.get('scheduledQuestionId');",
                   "if (!/^\\d+$/.test(id || '')) {",
-                  "    throw new Error('Сначала выполните папку 05: нет scheduledQuestionId');",
+                  "    throw new Error('Сначала выполните папку 06: нет scheduledQuestionId');",
                   "}"
                 ]
               }
@@ -2091,7 +2182,7 @@
                 "exec": [
                   "const id = pm.collectionVariables.get('closedQuestionId');",
                   "if (!/^\\d+$/.test(id || '')) {",
-                  "    throw new Error('Сначала выполните папку 05: нет closedQuestionId');",
+                  "    throw new Error('Сначала выполните папку 06: нет closedQuestionId');",
                   "}"
                 ]
               }
@@ -2139,7 +2230,7 @@
                 "exec": [
                   "const id = pm.collectionVariables.get('liveQuestionId');",
                   "if (!/^\\d+$/.test(id || '')) {",
-                  "    throw new Error('Сначала выполните папку 04: нет liveQuestionId');",
+                  "    throw new Error('Сначала выполните папку 05: нет liveQuestionId');",
                   "}"
                 ]
               }
@@ -2195,7 +2286,7 @@
                 "exec": [
                   "const id = pm.collectionVariables.get('liveQuestionId');",
                   "if (!/^\\d+$/.test(id || '')) {",
-                  "    throw new Error('Сначала выполните папку 04: нет liveQuestionId');",
+                  "    throw new Error('Сначала выполните папку 05: нет liveQuestionId');",
                   "}"
                 ]
               }
@@ -2246,7 +2337,7 @@
                 "exec": [
                   "const id = pm.collectionVariables.get('liveQuestionId');",
                   "if (!/^\\d+$/.test(id || '')) {",
-                  "    throw new Error('Сначала выполните папку 04: нет liveQuestionId');",
+                  "    throw new Error('Сначала выполните папку 05: нет liveQuestionId');",
                   "}"
                 ]
               }
@@ -2296,7 +2387,7 @@
                 "exec": [
                   "const id = pm.collectionVariables.get('liveQuestionId');",
                   "if (!/^\\d+$/.test(id || '')) {",
-                  "    throw new Error('Сначала выполните папку 04: нет liveQuestionId');",
+                  "    throw new Error('Сначала выполните папку 05: нет liveQuestionId');",
                   "}"
                 ]
               }
@@ -2335,7 +2426,7 @@
                 "exec": [
                   "const id = pm.collectionVariables.get('liveQuestionId');",
                   "if (!/^\\d+$/.test(id || '')) {",
-                  "    throw new Error('Сначала выполните папку 04: нет liveQuestionId');",
+                  "    throw new Error('Сначала выполните папку 05: нет liveQuestionId');",
                   "}"
                 ]
               }
