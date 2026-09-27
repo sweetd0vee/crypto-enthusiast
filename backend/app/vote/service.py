@@ -4,16 +4,18 @@ import hashlib
 import logging
 import math
 import zlib
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from app.api.errors import AppError, unavailable_on_redis_error
+from app.errors import AppError, unavailable_on_redis_error
 from app.question.cache import cache_question, get_cached_question
 from app.question.models import OptionInput, QuestionOutput
 from app.question.service import get_question
+from app.question.voting_window import require_open_voting_window
 from app.store.keys import result_counter_key, vote_dedup_key
+from app.vote.atomic_counter import reserve_viewer_and_increment_counter
 from app.vote.journal import VoteJournal
 from app.vote.models import PublicQuestion, VoteEvent
 
@@ -21,22 +23,6 @@ DEDUP_TTL_MARGIN_SECONDS = 86_400
 VOTE_UNAVAILABLE = "Сервис голосования временно недоступен"
 
 logger = logging.getLogger(__name__)
-
-ACCEPT_VOTE_SCRIPT = """
-if redis.call("EXISTS", KEYS[1]) == 1 then
-    return 0
-end
-
-local counter_type = redis.call("TYPE", KEYS[2])
-if counter_type["ok"] ~= "none" and counter_type["ok"] ~= "hash" then
-    return redis.error_reply("vote counter key has an unexpected type")
-end
-
-redis.call("SET", KEYS[1], "1", "EX", ARGV[1])
-redis.call("HINCRBY", KEYS[2], ARGV[2], 1)
-return 1
-"""
-
 
 def dedup_hash(question_id: int, viewer_id: str) -> str:
     return hashlib.sha256(f"{question_id}|{viewer_id}".encode()).hexdigest()
@@ -46,23 +32,8 @@ def client_ip_hash(client_ip: str, salt: str) -> str:
     return hashlib.sha256(f"{client_ip}|{salt}".encode()).hexdigest()
 
 
-async def _reserve_and_increment(
-    redis: Redis,
-    *,
-    dedup_key: str,
-    counter_key: str,
-    ttl: int,
-    option_key: str,
-) -> bool:
-    result = await redis.eval(
-        ACCEPT_VOTE_SCRIPT,
-        2,
-        dedup_key,
-        counter_key,
-        ttl,
-        option_key,
-    )
-    return result == 1
+# Compatibility aliases for existing internal imports.
+_reserve_and_increment = reserve_viewer_and_increment_counter
 
 
 async def _load_question(
@@ -80,17 +51,7 @@ async def _load_question(
         return loaded
 
 
-def _check_window(question: QuestionOutput, now: datetime) -> datetime:
-    show_time = question.show_time
-    if question.status != "published" or show_time is None:
-        raise AppError(403, "not_published", "Вопрос не опубликован")
-    if now < show_time:
-        raise AppError(403, "window_not_started", "Голосование ещё не началось")
-
-    closes_at = show_time + timedelta(seconds=question.duration_seconds)
-    if now >= closes_at:
-        raise AppError(410, "window_closed", "Время голосования истекло")
-    return closes_at
+_check_window = require_open_voting_window
 
 
 def _public_question(question: QuestionOutput, closes_at: datetime) -> PublicQuestion:

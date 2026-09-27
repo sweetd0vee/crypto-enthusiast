@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { ApiError, api } from '../api'
+import { viewerMessages } from '../errorMessages'
 import type { PublicQuestion } from '../types'
-import { viewerMessages } from '../ui'
 
 type ViewerState =
   | 'loading'

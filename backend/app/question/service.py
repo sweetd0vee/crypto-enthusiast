@@ -8,7 +8,7 @@ from redis.asyncio import Redis
 from sqlalchemy import delete, exists, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from app.api.errors import AppError
+from app.errors import AppError
 from app.question.cache import cache_question, evict_question
 from app.question.models import (
     OptionInput,

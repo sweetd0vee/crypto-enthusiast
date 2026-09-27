@@ -1,12 +1,13 @@
 import { type FormEvent, useState } from 'react'
 import { ApiError, api } from '../api'
+import { toLocalDateTimeInput } from '../displayFormatting'
+import { errorMessage } from '../errorMessages'
 import type {
   OptionInput,
   Question,
   QuestionInput,
   QuestionStatus,
 } from '../types'
-import { errorMessage, toLocalInput } from '../ui'
 
 export function QuestionEditor({
   question,
@@ -19,7 +20,7 @@ export function QuestionEditor({
 }) {
   const [name, setName] = useState(question?.name ?? '')
   const [showTime, setShowTime] = useState(
-    toLocalInput(question?.show_time ?? null),
+    toLocalDateTimeInput(question?.show_time ?? null),
   )
   const [duration, setDuration] = useState(question?.duration_seconds ?? 60)
   const [status, setStatus] = useState<QuestionStatus>(

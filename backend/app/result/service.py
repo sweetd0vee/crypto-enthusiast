@@ -6,7 +6,7 @@ from redis.asyncio import Redis
 from sqlalchemy import delete, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from app.api.errors import unavailable_on_redis_error
+from app.errors import unavailable_on_redis_error
 from app.question.models import QuestionOutput
 from app.question.service import get_question
 from app.result.models import OptionCount, QuestionResult

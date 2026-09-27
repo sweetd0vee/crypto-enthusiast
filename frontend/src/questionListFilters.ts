@@ -87,14 +87,18 @@ export function filterQuestions(
   return questions
     .filter((question) => {
       const showDate = question.show_time ? new Date(question.show_time) : null
-      const searchable = [question.name, ...question.options.map((option) => option.label)]
+      const searchable = [
+        question.name,
+        ...question.options.map((option) => option.label),
+      ]
         .join(' ')
         .toLocaleLowerCase()
       const shownNumber = String(questionNumbers.get(question.id))
 
       return (
         (normalizedNumber === '' || shownNumber.includes(normalizedNumber)) &&
-        (filters.status === 'all' || question.effective_status === filters.status) &&
+        (filters.status === 'all' ||
+          question.effective_status === filters.status) &&
         (normalizedSearch === '' || searchable.includes(normalizedSearch)) &&
         matchesTime(showDate, filters.time, referenceTime) &&
         matchesDuration(question.duration_seconds, filters.duration)

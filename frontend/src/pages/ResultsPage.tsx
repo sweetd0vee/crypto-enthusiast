@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api'
 import { AdminLayout } from '../components/AdminLayout'
+import { StatusBadge } from '../components/StatusBadge'
+import { errorMessage } from '../errorMessages'
 import type { QuestionResult } from '../types'
-import { errorMessage, statusLabels } from '../ui'
 import { useAdminGuard } from '../useAdminGuard'
 
 export function ResultsPage() {
@@ -56,9 +57,7 @@ export function ResultsPage() {
               </div>
             </div>
             <div className="result-meta">
-              <span className={`status status-${result.effective_status}`}>
-                {statusLabels[result.effective_status]}
-              </span>
+              <StatusBadge status={result.effective_status} />
               {result.effective_status === 'live' && (
                 <span className="live-note">Обновляется каждые 2 секунды</span>
               )}

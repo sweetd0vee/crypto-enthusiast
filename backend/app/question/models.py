@@ -1,7 +1,9 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.question.voting_window import calculate_closing_time
 
 QuestionStatus = Literal["draft", "published", "cancelled"]
 EffectiveStatus = Literal["draft", "cancelled", "scheduled", "live", "closed"]
@@ -81,6 +83,6 @@ def effective_status(
     current_time = now or datetime.now(UTC)
     if current_time < show_time:
         return "scheduled"
-    if current_time < show_time + timedelta(seconds=duration_seconds):
+    if current_time < calculate_closing_time(show_time, duration_seconds):
         return "live"
     return "closed"

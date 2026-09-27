@@ -6,8 +6,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from app.api.errors import AppError
 from app.config import Settings, get_settings
+from app.errors import AppError
 from app.store.db import get_engine
 from app.store.redis import get_redis
 from app.vote.journal import VoteJournal, get_journal

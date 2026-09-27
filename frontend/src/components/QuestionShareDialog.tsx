@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import type { Question } from '../types'
-import { statusLabels } from '../ui'
+import { StatusBadge } from './StatusBadge'
 
 export function QuestionShareDialog({
   question,
@@ -72,9 +72,7 @@ export function QuestionShareDialog({
 
           <div className="share-details">
             <div className="share-status">
-              <span className={`status status-${question.effective_status}`}>
-                {statusLabels[question.effective_status]}
-              </span>
+              <StatusBadge status={question.effective_status} />
               {question.show_time && (
                 <span>
                   {new Date(question.show_time).toLocaleString()} ·{' '}

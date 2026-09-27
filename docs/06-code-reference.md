@@ -12,12 +12,13 @@ HTTP-контракт — в [03-api.md](03-api.md).
 ```text
 backend/
   app/
-    api/            # HTTP-маршруты, зависимости, auth и ошибки
+    api/            # HTTP-маршруты, зависимости и auth
     question/       # модели, CRUD и кэш вопросов
     vote/           # публичная форма, Lua hot path и журнал
     result/         # чтение и пересчёт результатов
     store/          # PostgreSQL, Redis, ключи и таблицы
     config.py       # конфигурация из окружения
+    errors.py       # транспортно-независимые ошибки приложения
     main.py         # FastAPI и lifecycle
   migrations/       # Alembic
   scripts/          # seed и нагрузочный скрипт
@@ -30,8 +31,9 @@ frontend/
     useAdminGuard.ts
     api.ts
     types.ts
-    adminQuestions.ts
-    ui.ts
+    questionListFilters.ts
+    displayFormatting.ts
+    errorMessages.ts
   e2e/
 docker/
   compose.yml
@@ -260,7 +262,7 @@ TTL у карточки отсутствует: create/update всегда об�
 `question.service.get_question()` и прогревает кэш. Ошибка Redis
 преобразуется в `503 unavailable`.
 
-`_check_window()` проверяет:
+`question.voting_window.require_open_voting_window()` проверяет:
 
 1. `status == published` и наличие `show_time`;
 2. `now >= show_time`;
@@ -275,7 +277,7 @@ dedup key. Уже проголосовавший браузер получает
 
 ### Lua hot path
 
-`ACCEPT_VOTE_SCRIPT` принимает:
+`vote/atomic_counter.py` содержит `ACCEPT_VOTE_SCRIPT`, который принимает:
 
 - `KEYS[1]` — `vote:{question_id}:{dedup_hash}`;
 - `KEYS[2]` — `results:{question_id}:{shard}`;
@@ -290,7 +292,8 @@ dedup key. Уже проголосовавший браузер получает
 4. выполняет `HINCRBY`;
 5. возвращает `1`.
 
-`_reserve_and_increment()` вызывает `redis.eval()` и переводит ответ в bool.
+`reserve_viewer_and_increment_counter()` вызывает `redis.eval()` и переводит
+ответ в bool.
 При ошибочном типе counter Lua завершается до установки dedup.
 
 `accept_vote()`:
@@ -582,7 +585,7 @@ security boundary: backend всё равно проверяет Bearer token.
 Содержит доступные через подписанные кнопки SVG-иконки поиска, QR,
 редактирования, удаления и выхода.
 
-### `frontend/src/adminQuestions.ts`
+### `frontend/src/questionListFilters.ts`
 
 `buildQuestionNumbers()` сортирует настоящие id и строит отображаемые номера
 `1..N`.
@@ -598,13 +601,16 @@ security boundary: backend всё равно проверяет Bearer token.
 - длительность;
 - направление сортировки id.
 
-### `frontend/src/ui.ts`
+### `frontend/src/errorMessages.ts`
 
 - `viewerMessages` локализует публичные коды ошибок;
-- `statusLabels` подписывает effective statuses;
 - `errorMessage()` безопасно извлекает сообщение;
+
+### `frontend/src/displayFormatting.ts`
+
+- `statusLabels` подписывает effective statuses;
 - `formatDuration()` показывает секунды или целые минуты;
-- `toLocalInput()` переводит ISO datetime в значение `datetime-local`.
+- `toLocalDateTimeInput()` переводит ISO datetime в значение `datetime-local`.
 
 ### `frontend/src/useAdminGuard.ts`
 

@@ -5,15 +5,15 @@ import {
   filterQuestions,
   filtersAreActive,
   type QuestionFilters,
-} from '../adminQuestions'
+} from '../questionListFilters'
 import { ApiError, api } from '../api'
 import { AdminLayout } from '../components/AdminLayout'
 import { QuestionEditor } from '../components/QuestionEditor'
 import { QuestionShareDialog } from '../components/QuestionShareDialog'
 import { QuestionStats } from '../components/QuestionStats'
 import { QuestionTable } from '../components/QuestionTable'
+import { errorMessage } from '../errorMessages'
 import type { Question } from '../types'
-import { errorMessage } from '../ui'
 import { useAdminGuard } from '../useAdminGuard'
 
 export function AdminPage() {

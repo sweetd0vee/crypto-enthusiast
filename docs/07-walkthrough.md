@@ -8,7 +8,8 @@
 [01-specification.md](01-specification.md), устройство системы —
 [02-architecture.md](02-architecture.md), список URL —
 [03-api.md](03-api.md), справочник функций —
-[06-code-reference.md](06-code-reference.md). Этот файл их не заменяет:
+[06-code-reference.md](06-code-reference.md), пик нагрузки —
+[08-load.md](08-load.md). Этот файл их не заменяет:
 он показывает, в каком порядке эти части читать.
 
 ## Задача своими словами
@@ -189,9 +190,10 @@ frontend/src/
    новый UUID.
 2. `get_public_question()` в `backend/app/vote/service.py` загружает вопрос
    через `_load_question()`: сначала Redis, при промахе PostgreSQL.
-3. `_check_window()` проверяет, что вопрос опубликован и серверное время
-   внутри окна. Рано — `403 window_not_started`. Поздно — `410 window_closed`.
-   Черновик — `403 not_published`.
+3. `require_open_voting_window()` из `question/voting_window.py` проверяет,
+   что вопрос опубликован и серверное время внутри окна. Рано —
+   `403 window_not_started`. Поздно — `410 window_closed`. Черновик —
+   `403 not_published`.
 4. Сервер проверяет, есть ли уже ключ «этот браузер голосовал». Есть —
    `409 already_voted`, кнопки не показываются.
 5. Наружу уходит только `id`, `name`, `closes_at` и список `{key, label}`.
@@ -224,7 +226,7 @@ frontend/src/
    разъезжаются по разным ключам Redis, чтобы один ключ не принимал всю
    страну. Чтение результата потом складывает их обратно.
 5. Одним Lua-скриптом `ACCEPT_VOTE_SCRIPT` делает две записи атомарно.
-   Скрипт в том же файле `vote/service.py`.
+   Скрипт изолирован в `vote/atomic_counter.py`.
 6. Если отметка уже стояла, скрипт возвращает `0`, API отвечает
    `409 already_voted`.
 7. Если голос первый, скрипт возвращает `1`. Сервер собирает `VoteEvent` и
