@@ -1,3 +1,8 @@
+"""Таблицы SQLAlchemy Core: вопрос, варианты, журнал голосов, снимок итогов.
+
+Горячий путь в эти таблицы не пишет, кроме журнала `vote`. Счётчики живут в Redis.
+"""
+
 from sqlalchemy import (
     BigInteger,
     CheckConstraint,
@@ -17,6 +22,7 @@ from sqlalchemy import (
 
 metadata = MetaData()
 
+# Карточка опроса. status — сохранённый; scheduled/live/closed считаются в коде.
 question = Table(
     "question",
     metadata,
@@ -34,6 +40,7 @@ question = Table(
     ),
 )
 
+# Варианты ответа. Удаляются каскадом вместе с вопросом.
 question_option = Table(
     "question_option",
     metadata,
@@ -51,6 +58,8 @@ question_option = Table(
     UniqueConstraint("question_id", "position", name="uq_question_option_position"),
 )
 
+# Журнал принятых голосов. Уникальность зрителя — (question_id, dedup_key).
+# В проде таблица партиционируется миграцией 002 на vote_p00–vote_p15.
 vote = Table(
     "vote",
     metadata,
@@ -70,6 +79,7 @@ vote = Table(
 )
 Index("ix_vote_question_option", vote.c.question_id, vote.c.option_key)
 
+# Снимок итогов после rebuild. Live-цифры сюда не пишутся на каждый голос.
 question_result = Table(
     "question_result",
     metadata,

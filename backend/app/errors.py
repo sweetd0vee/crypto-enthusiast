@@ -7,7 +7,7 @@ from redis.exceptions import RedisError
 
 
 class AppError(Exception):
-    """A stable application error that can be rendered by any transport."""
+    """Ошибка домена с кодом HTTP, машинным `error` и текстом для клиента."""
 
     def __init__(self, status_code: int, error: str, message: str) -> None:
         super().__init__(message)
@@ -18,7 +18,10 @@ class AppError(Exception):
 
 @contextmanager
 def unavailable_on_redis_error(message: str) -> Iterator[None]:
-    """Translate Redis failures without hiding an existing application error."""
+    """Любой RedisError превратить в 503, уже поднятый AppError не перехватывать.
+
+    Иначе 409 already_voted внутри блока с Redis выглядел бы как «сервис недоступен».
+    """
     try:
         yield
     except AppError:

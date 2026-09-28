@@ -8,11 +8,13 @@ export const statusLabels: Record<EffectiveStatus, string> = {
   closed: 'Завершён',
 }
 
+/** Длительность окна для таблицы: минуты, если ≥ 60 секунд. */
 export function formatDuration(seconds: number): string {
   if (seconds >= 60) return `${Math.floor(seconds / 60)} мин.`
   return `${seconds} сек.`
 }
 
+/** ISO с сервера → значение для `<input type="datetime-local">` в локальной зоне. */
 export function toLocalDateTimeInput(value: string | null): string {
   if (!value) return ''
   const date = new Date(value)

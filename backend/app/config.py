@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     @field_validator("database_url", mode="before")
     @classmethod
     def use_asyncpg_driver(cls, value: object) -> object:
+        """Привести URL к postgresql+asyncpg://, даже если передали postgres:// из PaaS."""
         if not isinstance(value, str):
             return value
         url = value
@@ -31,4 +32,5 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    """Один экземпляр настроек на процесс: окружение читается один раз."""
     return Settings()

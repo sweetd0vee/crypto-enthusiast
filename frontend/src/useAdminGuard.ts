@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { clearAdminToken } from './adminAuth'
 import { ApiError } from './api'
 
+/** Если API ответил unauthorized — стереть токен и отправить на /admin/login. */
 export function useAdminGuard() {
   const navigate = useNavigate()
 

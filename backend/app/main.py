@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Старт: PostgreSQL, Redis, журнал. Стоп: дождаться очереди и закрыть клиенты."""
     settings = get_settings()
     try:
         engine = init_engine(settings.database_url)
@@ -39,6 +40,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 async def healthz() -> JSONResponse:
+    """Проверка живости: пинг обоих хранилищ. Любой сбой — 503, без деталей наружу."""
     try:
         await ping_db()
         await ping_redis()
@@ -52,6 +54,7 @@ async def healthz() -> JSONResponse:
 
 
 def create_app() -> FastAPI:
+    """Собрать приложение: обработчики ошибок, публичный и админский роутеры, /healthz."""
     application = FastAPI(title="TV poll", lifespan=lifespan)
     install_error_handlers(application)
     application.include_router(public_router)

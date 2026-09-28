@@ -22,6 +22,7 @@ export const emptyFilters: QuestionFilters = {
   sortDirection: 'asc',
 }
 
+/** Есть ли хоть один фильтр кроме сортировки — для кнопки «сбросить». */
 export function filtersAreActive(filters: QuestionFilters): boolean {
   return (
     filters.number !== '' ||
@@ -32,6 +33,7 @@ export function filtersAreActive(filters: QuestionFilters): boolean {
   )
 }
 
+/** Стабильный номер строки по id, не зависит от текущих фильтров. */
 export function buildQuestionNumbers(
   questions: Question[],
 ): Map<number, number> {
@@ -42,6 +44,7 @@ export function buildQuestionNumbers(
   )
 }
 
+/** Фильтр по show_time относительно «сейчас» в браузере. */
 function matchesTime(
   showDate: Date | null,
   time: TimeFilter,
@@ -62,6 +65,7 @@ function matchesTime(
   }
 }
 
+/** Короткие ≤ 1 мин, средние до 5 мин, длинные — всё что дольше. */
 function matchesDuration(seconds: number, duration: DurationFilter): boolean {
   switch (duration) {
     case 'all':
@@ -75,6 +79,7 @@ function matchesDuration(seconds: number, duration: DurationFilter): boolean {
   }
 }
 
+/** Отфильтровать таблицу админки и отсортировать по id. */
 export function filterQuestions(
   questions: Question[],
   filters: QuestionFilters,

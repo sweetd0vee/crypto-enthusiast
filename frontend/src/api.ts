@@ -7,6 +7,7 @@ import type {
 } from './types'
 import { getAdminToken } from './adminAuth'
 
+/** Ошибка HTTP: статус и тело `{error, message}` как на бэкенде. */
 export class ApiError extends Error {
   status: number
   body: ApiErrorBody
@@ -18,6 +19,7 @@ export class ApiError extends Error {
   }
 }
 
+/** Общий fetch: cookie `vid` уходит сама, 204 даёт undefined, ошибка — ApiError. */
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init)
 
@@ -37,6 +39,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>
 }
 
+/** Тот же request, плюс Bearer из sessionStorage, если токен уже введён. */
 function adminRequest<T>(url: string, init: RequestInit = {}): Promise<T> {
   const token = getAdminToken()
   const headers = new Headers(init.headers)
@@ -46,6 +49,7 @@ function adminRequest<T>(url: string, init: RequestInit = {}): Promise<T> {
   return request<T>(url, { ...init, headers })
 }
 
+/** Собрать POST/PUT с JSON-телом. */
 function jsonInit(method: string, body: unknown): RequestInit {
   return {
     method,
